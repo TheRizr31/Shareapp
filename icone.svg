@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#1C1A17"/>
+  <!-- ticket -->
+  <path d="M146 108h220a10 10 0 0 1 10 10v268l-24-16-24 16-24-16-24 16-24-16-24 16-24-16-24 16-24-16-24 16V118a10 10 0 0 1 10-10z" fill="#F7F3E8"/>
+  <!-- lignes du ticket -->
+  <rect x="176" y="160" width="118" height="15" rx="7.5" fill="#C4BCA9"/>
+  <rect x="312" y="160" width="52" height="15" rx="7.5" fill="#C1362F"/>
+  <rect x="176" y="204" width="90" height="15" rx="7.5" fill="#C4BCA9"/>
+  <rect x="312" y="204" width="52" height="15" rx="7.5" fill="#C1362F"/>
+  <rect x="176" y="248" width="106" height="15" rx="7.5" fill="#C4BCA9"/>
+  <rect x="312" y="248" width="52" height="15" rx="7.5" fill="#C1362F"/>
+  <!-- trait de total -->
+  <rect x="176" y="296" width="188" height="6" rx="3" fill="#1C1A17"/>
+  <rect x="176" y="320" width="70" height="20" rx="10" fill="#1C1A17"/>
+  <rect x="296" y="320" width="68" height="20" rx="10" fill="#1C1A17"/>
+</svg>
