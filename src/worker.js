@@ -1,7 +1,7 @@
 /* =====================================================================
- *  API Partage — Cloudflare Pages Functions
+ *  Worker Partage — sert les fichiers statiques (dist/) et l'API D1.
  *
- *  Une seule route attrape-tout : /api/<action>
+ *  Une seule route API attrape-tout : /api/<action>
  *  Toutes les opérations exigent le jeton de session, sauf la création.
  *
  *  Le jeton fait office de mot de passe : 12 caractères pris dans un
@@ -117,12 +117,10 @@ async function lireTout(db, session) {
 }
 
 /* ---------------------------------------------------------------------
- *  Point d'entrée
+ *  API : /api/<action>
  * ------------------------------------------------------------------- */
-export async function onRequest(contexte) {
-  const { request, env, params } = contexte;
+async function traiterApi(request, env, action) {
   const db = env.DB;
-  const action = Array.isArray(params.chemin) ? params.chemin[0] : params.chemin;
 
   if (request.method === "OPTIONS") return new Response(null, { status: 204 });
 
@@ -344,3 +342,16 @@ export async function onRequest(contexte) {
     return erreur(e.message || "Erreur interne", 500);
   }
 }
+
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+    if (url.pathname.startsWith("/api/")) {
+      const action = url.pathname.slice("/api/".length).split("/")[0];
+      return traiterApi(request, env, action);
+    }
+    // fichiers statiques (build Vite) ; le repli SPA est géré par
+    // `not_found_handling` dans la config des assets (wrangler.toml).
+    return env.ASSETS.fetch(request);
+  },
+};

@@ -1,6 +1,11 @@
 name = "partage"
-pages_build_output_dir = "dist"
+main = "src/worker.js"
 compatibility_date = "2024-11-01"
+
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
 
 [[d1_databases]]
 binding = "DB"
