@@ -382,6 +382,60 @@ function dessinerTicket(titre, dateISO, calcul) {
 
 /* ---------- composants ---------- */
 
+/**
+ * Repère local (localStorage, par jeton) : "qui es-tu parmi ces gens ?".
+ * Ne change aucun droit — tout le monde peut toujours tout modifier —
+ * c'est juste une étiquette "(vous)" affichée sur cet appareil.
+ */
+function QuiEsTu({ participants, nouveauNom, onChangeNouveauNom, onAjouter, onChoisir, onPasser }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center px-5 pb-6 sm:items-center"
+         style={{ background: "rgba(28,26,23,.55)", backdropFilter: "blur(3px)", WebkitBackdropFilter: "blur(3px)" }}
+         onClick={onPasser}>
+      <div className="monte relative w-full max-w-[400px] rounded-[20px] p-5"
+           style={{ background: "#F7F3E8", border: "1px solid #E5DECD", boxShadow: "0 20px 50px rgba(28,26,23,.35)" }}
+           onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+        <h2 className="text-[19px] font-bold tracking-[-0.02em]">Qui es-tu ?</h2>
+        <p className="mt-1.5 text-[12.5px] leading-relaxed text-[#8B8578]">
+          Pour te repérer plus vite dans les écrans. Ça ne change rien pour les autres.
+        </p>
+        <div className="mt-4 max-h-[240px] space-y-1.5 overflow-y-auto">
+          {participants.map((p) => (
+            <button key={p.id} onClick={() => onChoisir(p.id)}
+              className="flex w-full items-center gap-3 rounded-[12px] border px-3 py-2.5 text-left
+                         transition-colors hover:border-[#CDC4B0]"
+              style={{ borderColor: "#E0D8C7" }}>
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full
+                               text-[10px] font-bold text-[#F7F3E8]"
+                    style={{ background: p.couleur }}>
+                {p.nom.slice(0, 2).toUpperCase()}
+              </span>
+              <span className="text-[14px] font-medium">{p.nom}</span>
+            </button>
+          ))}
+        </div>
+        <div className="mt-3 flex items-center gap-1 rounded-full border border-dashed px-3 py-1.5"
+             style={{ borderColor: "#CDC4B0" }}>
+          <input value={nouveauNom} onChange={onChangeNouveauNom}
+            onKeyDown={(e) => e.key === "Enter" && onAjouter()}
+            placeholder="Je ne suis pas dans la liste"
+            className="w-full bg-transparent text-[13.5px] placeholder-[#B0A897] focus:outline-none" />
+          <button onClick={onAjouter} disabled={!nouveauNom.trim()}
+            className="shrink-0 rounded-full px-2.5 py-1 text-[12px] font-semibold transition-colors"
+            style={{ color: nouveauNom.trim() ? "#1C1A17" : "#B0A897" }}>
+            Ajouter
+          </button>
+        </div>
+        <button onClick={onPasser}
+          className="mt-4 w-full text-center text-[12.5px] font-medium transition-colors hover:text-[#1C1A17]"
+          style={{ color: "#8B8578" }}>
+          Passer
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function Pastille({ participant, actif, onClick, taille = 36 }) {
   const initiales = participant.nom.trim().slice(0, 2).toUpperCase() || "?";
   return (
@@ -666,6 +720,9 @@ function ModuleAddition({ onRetour, sessionInitiale }) {
   const [tri, setTri] = useState("saisie");           // saisie | montant | nom
   const [sauvegarde, setSauvegarde] = useState("repos"); // repos | cours | ok | erreur
   const [partageLienEtat, setPartageLienEtat] = useState("pret"); // pret | copie
+  const [moi, setMoi] = useState(null);
+  const [demanderQui, setDemanderQui] = useState(false);
+  const [nomQuiEsTu, setNomQuiEsTu] = useState("");
 
   const refLibelle = useRef(null);
   const [{ executer, differe }] = useState(() => creerFile(setSauvegarde));
@@ -753,6 +810,33 @@ function ModuleAddition({ onRetour, sessionInitiale }) {
     }
   };
 
+  /* --- "qui es-tu" : repère local, pas un compte --- */
+  useEffect(() => {
+    if (!pret || !jeton || participants.length === 0) return;
+    const m = lireJSON(`moi:${jeton}`, null);
+    if (m === null) setDemanderQui(true);
+    else if (m !== "SKIP" && participants.some((p) => p.id === m)) setMoi(m);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pret, jeton, participants.length]);
+
+  const marquerMoi = (id) => {
+    setMoi(id);
+    ecrireJSON(`moi:${jeton}`, id);
+    setDemanderQui(false);
+    setNomQuiEsTu("");
+  };
+
+  const passerQuiEsTu = () => {
+    ecrireJSON(`moi:${jeton}`, "SKIP");
+    setDemanderQui(false);
+    setNomQuiEsTu("");
+  };
+
+  const ajouterEtMarquerMoi = async () => {
+    const id = await ajouterNom(nomQuiEsTu);
+    if (id) marquerMoi(id);
+  };
+
   const lignesAffichees = useMemo(() => {
     if (tri === "saisie") return lignes;
     const copie = [...lignes];
@@ -790,6 +874,7 @@ function ModuleAddition({ onRetour, sessionInitiale }) {
       const { id } = await executer(() => appeler("ajouter-participant", { jeton, nom: n, couleur }));
       majEtat((e) => ({ participants: [...e.participants, { id, nom: n, couleur }] }));
       setNomsConnus((ns) => [n, ...ns.filter((x) => x.toLowerCase() !== n.toLowerCase())].slice(0, 12));
+      return id;
     } catch (e) { console.error(e); }
   };
 
@@ -1240,7 +1325,9 @@ function ModuleAddition({ onRetour, sessionInitiale }) {
                           style={{ background: p.couleur }}>
                       {p.nom.slice(0, 2).toUpperCase()}
                     </span>
-                    <span className="text-[13.5px] font-medium">{p.nom}</span>
+                    <span className="text-[13.5px] font-medium">
+                      {p.nom}{p.id === moi && <span style={{ color: "#8B8578" }}> (vous)</span>}
+                    </span>
                     <button onClick={() => retirerParticipant(p.id)} aria-label={`Retirer ${p.nom}`}
                             className="text-[#C4BCA9] hover:text-[#C1362F] transition-colors">
                       <X size={13} strokeWidth={2.5} />
@@ -1968,6 +2055,12 @@ function ModuleAddition({ onRetour, sessionInitiale }) {
           </div>
         </div>
       )}
+
+      {demanderQui && (
+        <QuiEsTu participants={participants} nouveauNom={nomQuiEsTu}
+          onChangeNouveauNom={(e) => setNomQuiEsTu(e.target.value)}
+          onAjouter={ajouterEtMarquerMoi} onChoisir={marquerMoi} onPasser={passerQuiEsTu} />
+      )}
     </div>
   );
 }
@@ -2202,6 +2295,9 @@ function ModuleLocation({ onRetour, sessionInitiale }) {
   const [nomsConnus, setNomsConnus] = useState([]);
   const [sauvegarde, setSauvegarde] = useState("repos");
   const [partageLienEtat, setPartageLienEtat] = useState("pret"); // pret | copie
+  const [moi, setMoi] = useState(null);
+  const [demanderQui, setDemanderQui] = useState(false);
+  const [nomQuiEsTu, setNomQuiEsTu] = useState("");
   const [nouveauNom, setNouveauNom] = useState("");
   const [deplie, setDeplie] = useState([]);
   const [ajoutPaiement, setAjoutPaiement] = useState(null); // personneId
@@ -2297,6 +2393,33 @@ function ModuleLocation({ onRetour, sessionInitiale }) {
     }
   };
 
+  /* --- "qui es-tu" : repère local, pas un compte --- */
+  useEffect(() => {
+    if (!pret || !jeton || personnes.length === 0) return;
+    const m = lireJSON(`moi:${jeton}`, null);
+    if (m === null) setDemanderQui(true);
+    else if (m !== "SKIP" && personnes.some((p) => p.id === m)) setMoi(m);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pret, jeton, personnes.length]);
+
+  const marquerMoi = (id) => {
+    setMoi(id);
+    ecrireJSON(`moi:${jeton}`, id);
+    setDemanderQui(false);
+    setNomQuiEsTu("");
+  };
+
+  const passerQuiEsTu = () => {
+    ecrireJSON(`moi:${jeton}`, "SKIP");
+    setDemanderQui(false);
+    setNomQuiEsTu("");
+  };
+
+  const ajouterEtMarquerMoi = async () => {
+    const id = await ajouterPersonne(nomQuiEsTu);
+    if (id) marquerMoi(id);
+  };
+
   /* --- historique --- */
   const cloturer = async () => {
     if (jeton) {
@@ -2352,6 +2475,7 @@ function ModuleLocation({ onRetour, sessionInitiale }) {
       const { id } = await executer(() => appeler("ajouter-participant", { jeton, nom: n, couleur }));
       majEtat((e) => ({ personnes: [...e.personnes, { id, nom: n, couleur, debut: null, fin: null }] }));
       setNomsConnus((ns) => [n, ...ns.filter((x) => x.toLowerCase() !== n.toLowerCase())].slice(0, 12));
+      return id;
     } catch (e) { console.error(e); }
   };
 
@@ -2657,7 +2781,9 @@ function ModuleLocation({ onRetour, sessionInitiale }) {
                           <button onClick={() => setDeplie((d) =>
                                     d.includes(p.id) ? d.filter((x) => x !== p.id) : [...d, p.id])}
                                   className="min-w-0 flex-1 text-left">
-                            <span className="block truncate text-[15px] font-semibold">{p.nom}</span>
+                            <span className="block truncate text-[15px] font-semibold">
+                              {p.nom}{p.id === moi && <span style={{ color: "#8B8578" }}> (vous)</span>}
+                            </span>
                             <span className="mt-0.5 block text-[11.5px] tabular-nums"
                                   style={{ fontFamily: "'Roboto Mono', monospace",
                                            color: partiel ? "#B5761F" : "#8B8578" }}>
@@ -2689,7 +2815,7 @@ function ModuleLocation({ onRetour, sessionInitiale }) {
                                       style={{ fontFamily: "'Roboto Mono', monospace", color: "#8B8578" }}>
                                   Arrive le
                                 </span>
-                                <input type="date" value={p.debut || ""} min={debut} max={fin}
+                                <input type="date" value={p.debut || debut} min={debut} max={fin}
                                   onChange={(e) => majPersonne(p.id, "debut", e.target.value)}
                                   className="w-full rounded-[10px] px-2.5 py-2 text-[13px] focus:outline-none"
                                   style={{ border: "1px solid #E0D8C7", background: "#FCFAF5",
@@ -2700,7 +2826,7 @@ function ModuleLocation({ onRetour, sessionInitiale }) {
                                       style={{ fontFamily: "'Roboto Mono', monospace", color: "#8B8578" }}>
                                   Repart le
                                 </span>
-                                <input type="date" value={p.fin || ""} min={p.debut || debut} max={fin}
+                                <input type="date" value={p.fin || fin} min={p.debut || debut} max={fin}
                                   onChange={(e) => majPersonne(p.id, "fin", e.target.value)}
                                   className="w-full rounded-[10px] px-2.5 py-2 text-[13px] focus:outline-none"
                                   style={{ border: "1px solid #E0D8C7", background: "#FCFAF5",
@@ -3180,6 +3306,12 @@ function ModuleLocation({ onRetour, sessionInitiale }) {
             </button>
           </div>
         </div>
+      )}
+
+      {demanderQui && (
+        <QuiEsTu participants={personnes} nouveauNom={nomQuiEsTu}
+          onChangeNouveauNom={(e) => setNomQuiEsTu(e.target.value)}
+          onAjouter={ajouterEtMarquerMoi} onChoisir={marquerMoi} onPasser={passerQuiEsTu} />
       )}
     </div>
   );
