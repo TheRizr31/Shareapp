@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import {
   appeler, creerFile, lireJSON, ecrireJSON, majIndex, retirerIndex,
-  jetonDeLURL, allerVersSession, allerVersAccueil,
+  jetonDeLURL, allerVersSession, allerVersAccueil, partagerLien,
 } from "./api.js";
 
 /* ==================================================================== */
@@ -665,6 +665,7 @@ function ModuleAddition({ onRetour, sessionInitiale }) {
   const [resteLigne, setResteLigne] = useState(null); // { ligneId, designes[] }
   const [tri, setTri] = useState("saisie");           // saisie | montant | nom
   const [sauvegarde, setSauvegarde] = useState("repos"); // repos | cours | ok | erreur
+  const [partageLienEtat, setPartageLienEtat] = useState("pret"); // pret | copie
 
   const refLibelle = useRef(null);
   const [{ executer, differe }] = useState(() => creerFile(setSauvegarde));
@@ -741,6 +742,15 @@ function ModuleAddition({ onRetour, sessionInitiale }) {
   const changerModeService = (mode) => {
     majEtat((e) => ({ extras: { ...e.extras, mode } }));
     if (jeton) executer(() => appeler("maj-session", { jeton, champs: { modeService: mode } })).catch(() => {});
+  };
+
+  const partagerLeLien = async () => {
+    if (!jeton) return;
+    const r = await partagerLien(jeton, titreAuto());
+    if (r === "copie") {
+      setPartageLienEtat("copie");
+      setTimeout(() => setPartageLienEtat("pret"), 2500);
+    }
   };
 
   const lignesAffichees = useMemo(() => {
@@ -1191,6 +1201,26 @@ function ModuleAddition({ onRetour, sessionInitiale }) {
                 )}
               </div>
             </header>
+
+            {/* lien de partage */}
+            {jeton && (
+              <button onClick={partagerLeLien}
+                className="monte mb-6 flex w-full items-center gap-2.5 rounded-[14px] bg-white p-3 text-left
+                           transition-colors hover:bg-[#F5F1E5]"
+                style={{ boxShadow: "0 0 0 1px #E9E2D2" }}>
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
+                      style={{ background: "#F2EDE0", color: "#8B8578" }}>
+                  <Share2 size={14} />
+                </span>
+                <span className="min-w-0 flex-1 truncate text-[12px]"
+                      style={{ fontFamily: "'Roboto Mono', monospace", color: "#8B8578" }}>
+                  {location.origin.replace(/^https?:\/\//, "")}/s/{jeton}
+                </span>
+                <span className="shrink-0 text-[12px] font-semibold" style={{ color: "#1C1A17" }}>
+                  {partageLienEtat === "copie" ? "Copié !" : "Partager"}
+                </span>
+              </button>
+            )}
 
             {/* convives */}
             <section className="mb-9">
@@ -2160,16 +2190,18 @@ function versEtatLocalLoc(session) {
   };
 }
 
-const CLE_LOC_JETON = "location:jeton";
+const CLE_LOC_HISTO = "location:historique";
 const CHAMPS_PERSONNE_SERVEUR = { debut: "dateDebut", fin: "dateFin" };
 
 function ModuleLocation({ onRetour, sessionInitiale }) {
-  const [pret, setPret] = useState(false);
-  const [ecran, setEcran] = useState("sejour");
+  const [pret, setPret] = useState(!!sessionInitiale);
+  const [ecran, setEcran] = useState(sessionInitiale ? "sejour" : "historique");
   const [jeton, setJeton] = useState(sessionInitiale?.jeton ?? null);
   const [etat, setEtat] = useState(() => (sessionInitiale ? versEtatLocalLoc(sessionInitiale) : locEtatVierge()));
+  const [historique, setHistorique] = useState([]); // index local (localStorage) des locations déjà ouvertes ici
   const [nomsConnus, setNomsConnus] = useState([]);
   const [sauvegarde, setSauvegarde] = useState("repos");
+  const [partageLienEtat, setPartageLienEtat] = useState("pret"); // pret | copie
   const [nouveauNom, setNouveauNom] = useState("");
   const [deplie, setDeplie] = useState([]);
   const [ajoutPaiement, setAjoutPaiement] = useState(null); // personneId
@@ -2192,36 +2224,41 @@ function ModuleLocation({ onRetour, sessionInitiale }) {
 
   const [{ executer, differe }] = useState(() => creerFile(setSauvegarde));
 
-  /* --- chargement initial : lien partagé, session déjà connue de cet    --- */
-  /* --- appareil, ou toute première ouverture (une location par lien).  --- */
+  /* --- chargement initial : soit une location précise (lien partagé), --- */
+  /* --- soit l'écran d'accueil du module (liste des locations connues). --- */
   useEffect(() => {
+    if (sessionInitiale) return; // déjà chargé synchroniquement à l'init de l'état
     setNomsConnus(lireJSON(CLE_LOC_NOMS, []));
-    if (sessionInitiale) {
-      ecrireJSON(CLE_LOC_JETON, sessionInitiale.jeton);
+    const h = lireJSON(CLE_LOC_HISTO, []);
+    setHistorique(h);
+    if (h.length === 0) {
+      creerSession().then(() => setEcran("sejour")).finally(() => setPret(true));
+    } else {
       setPret(true);
-      return;
     }
-    (async () => {
-      const jetonConnu = lireJSON(CLE_LOC_JETON, null);
-      if (jetonConnu) {
-        try {
-          const session = await appeler("lire", { jeton: jetonConnu });
-          setJeton(session.jeton);
-          setEtat(versEtatLocalLoc(session));
-          setPret(true);
-          return;
-        } catch { /* jeton périmé ou session supprimée : on en recrée une */ }
-      }
-      try {
-        const { jeton: nouveau } = await appeler("creer", { type: "location" });
-        ecrireJSON(CLE_LOC_JETON, nouveau);
-        setJeton(nouveau);
-        allerVersSession(nouveau);
-      } catch (e) { console.error(e); }
-      setPret(true);
-    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionInitiale]);
+
+  /* --- crée la location dès qu'on en a besoin sans en avoir une --- */
+  const creerSession = async () => {
+    const { jeton: nouveau } = await appeler("creer", { type: "location" });
+    setJeton(nouveau);
+    allerVersSession(nouveau);
+    setHistorique(majIndex(CLE_LOC_HISTO, nouveau, {
+      titre: "", modifieLe: Date.now(), nParticipants: 0, loyer: 0, nuits: 0,
+    }));
+    return nouveau;
+  };
+
+  /** Tient à jour le résumé affiché dans "Mes locations", sur cet appareil. */
+  useEffect(() => {
+    if (!pret || !jeton) return;
+    setHistorique(majIndex(CLE_LOC_HISTO, jeton, {
+      titre: etat.titre, modifieLe: Date.now(),
+      nParticipants: personnes.length, loyer: etat.loyer, nuits: calcul.nuitsSejour,
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pret, jeton, etat.titre, personnes.length, etat.loyer, calcul.nuitsSejour]);
 
   useEffect(() => {
     if (!pret || nomsConnus.length === 0) return;
@@ -2249,6 +2286,59 @@ function ModuleLocation({ onRetour, sessionInitiale }) {
   const changerModeTransfert = (mode) => {
     majEtat(() => ({ modeTransfert: mode }));
     if (jeton) executer(() => appeler("maj-session", { jeton, champs: { modeTransfert: mode } })).catch(() => {});
+  };
+
+  const partagerLeLien = async () => {
+    if (!jeton) return;
+    const r = await partagerLien(jeton, etat.titre || "La location");
+    if (r === "copie") {
+      setPartageLienEtat("copie");
+      setTimeout(() => setPartageLienEtat("pret"), 2500);
+    }
+  };
+
+  /* --- historique --- */
+  const cloturer = async () => {
+    if (jeton) {
+      try { await executer(() => appeler("maj-session", { jeton, champs: { cloturee: true } })); }
+      catch (e) { console.error(e); }
+    }
+    setJeton(null);
+    setEtat(locEtatVierge());
+    allerVersAccueil();
+    setDeplie([]);
+    setEcran("historique");
+  };
+
+  const rouvrir = async (entree) => {
+    try {
+      const session = await appeler("lire", { jeton: entree.jeton });
+      setJeton(session.jeton);
+      setEtat(versEtatLocalLoc(session));
+      allerVersSession(session.jeton);
+      setDeplie([]);
+      setEcran("sejour");
+      if (session.clotureeLe) {
+        executer(() => appeler("maj-session", { jeton: session.jeton, champs: { cloturee: false } })).catch(() => {});
+      }
+    } catch (e) {
+      console.error(e);
+      setHistorique(retirerIndex(CLE_LOC_HISTO, entree.jeton));
+    }
+  };
+
+  const supprimerHisto = async (jetonASupprimer) => {
+    setHistorique(retirerIndex(CLE_LOC_HISTO, jetonASupprimer));
+    try { await appeler("supprimer-session", { jeton: jetonASupprimer }); } catch (e) { console.error(e); }
+  };
+
+  const nouvelleLocation = async () => {
+    try {
+      await creerSession();
+      setEtat(locEtatVierge());
+      setDeplie([]);
+      setEcran("sejour");
+    } catch (e) { console.error(e); }
   };
 
   /* --- personnes --- */
@@ -2370,13 +2460,68 @@ function ModuleLocation({ onRetour, sessionInitiale }) {
 
       <div className="mx-auto max-w-[430px] px-5 pb-32">
 
+        {/* ================= HISTORIQUE ================= */}
+        {ecran === "historique" && (
+          <>
+            <header className="pt-10 pb-8">
+              <button onClick={onRetour}
+                className="mb-5 -ml-1 flex items-center gap-1 text-[13px] transition-colors"
+                style={{ color: "#8B8578" }}>
+                <ChevronLeft size={16} /> Accueil
+              </button>
+              <h1 className="text-[34px] font-bold leading-[0.95] tracking-[-0.035em]">Mes locations</h1>
+              <p className="mt-2 text-[13px]" style={{ color: "#8B8578" }}>
+                {historique.length === 0
+                  ? "Rien pour l'instant."
+                  : `${historique.length} ${historique.length > 1 ? "locations gardées" : "location gardée"}`}
+              </p>
+            </header>
+
+            {historique.length === 0 ? (
+              <p className="rounded-[18px] border border-dashed px-6 py-12 text-center text-[13.5px] leading-relaxed"
+                 style={{ borderColor: "#DDD5C4", color: "#8B8578" }}>
+                Les locations apparaîtront ici.
+              </p>
+            ) : (
+              <ul className="space-y-2.5">
+                {historique.map((h, i) => (
+                  <li key={h.jeton}
+                      className="monte flex items-center gap-3 rounded-[18px] p-4"
+                      style={{ background: "#fff", boxShadow: "0 0 0 1px #E9E2D2",
+                               animationDelay: `${i * 35}ms` }}>
+                    <button onClick={() => rouvrir(h)} className="min-w-0 flex-1 text-left">
+                      <span className="block truncate text-[15px] font-semibold tracking-[-0.01em]">
+                        {h.titre || "La location"}
+                      </span>
+                      <span className="mt-0.5 block text-[11.5px]"
+                            style={{ fontFamily: "'Roboto Mono', monospace", color: "#8B8578" }}>
+                        {h.nuits || 0} nuit{(h.nuits || 0) > 1 ? "s" : ""} · {h.nParticipants} pers.
+                      </span>
+                    </button>
+                    <span className="shrink-0 text-[17px] font-bold tabular-nums"
+                          style={{ fontFamily: "'Roboto Mono', monospace" }}>
+                      {locFmt(h.loyer || 0)} €
+                    </span>
+                    <button onClick={() => supprimerHisto(h.jeton)}
+                            aria-label={`Supprimer ${h.titre || "cette location"}`}
+                            className="shrink-0 transition-colors" style={{ color: "#C4BCA9" }}>
+                      <Trash2 size={15} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
+        )}
+
         {/* en-tête */}
+        {ecran !== "historique" && (<>
         <header className="pt-10 pb-7">
           <div className="mb-4 flex items-center justify-between">
-            <button onClick={onRetour}
+            <button onClick={() => { allerVersAccueil(); setEcran("historique"); }}
               className="-ml-1 flex items-center gap-1 text-[13px] transition-colors"
               style={{ color: "#8B8578" }}>
-              <ChevronLeft size={16} /> Accueil
+              <ChevronLeft size={16} /> Mes locations
             </button>
             <span className="flex items-center gap-1.5 text-[11px]"
                   style={{ fontFamily: "'Roboto Mono', monospace",
@@ -2401,6 +2546,25 @@ function ModuleLocation({ onRetour, sessionInitiale }) {
               {locDateCourte(debut)} → {locDateCourte(fin)} · {calcul.nuitsSejour} nuit
               {calcul.nuitsSejour > 1 ? "s" : ""} · {personnes.length} pers.
             </p>
+          )}
+
+          {jeton && (
+            <button onClick={partagerLeLien}
+              className="monte mt-4 flex w-full items-center gap-2.5 rounded-[14px] bg-white p-3 text-left
+                         transition-colors hover:bg-[#F5F1E5]"
+              style={{ boxShadow: "0 0 0 1px #E9E2D2" }}>
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
+                    style={{ background: "#F2EDE0", color: "#8B8578" }}>
+                <Share2 size={14} />
+              </span>
+              <span className="min-w-0 flex-1 truncate text-[12px]"
+                    style={{ fontFamily: "'Roboto Mono', monospace", color: "#8B8578" }}>
+                {location.origin.replace(/^https?:\/\//, "")}/s/{jeton}
+              </span>
+              <span className="shrink-0 text-[12px] font-semibold" style={{ color: "#1C1A17" }}>
+                {partageLienEtat === "copie" ? "Copié !" : "Partager"}
+              </span>
+            </button>
           )}
         </header>
 
@@ -2982,20 +3146,41 @@ function ModuleLocation({ onRetour, sessionInitiale }) {
                 </div>
               </section>
             )}
+
+            <button onClick={cloturer}
+              className="mt-5 w-full rounded-[14px] border border-dashed py-3.5 text-[13px] font-semibold
+                         transition-colors hover:border-[#1C1A17] hover:text-[#1C1A17]"
+              style={{ borderColor: "#CDC4B0", color: "#8B8578" }}>
+              Terminer et ranger dans l'historique
+            </button>
           </>
         )}
+        </>)}
       </div>
 
       {/* onglets */}
-      <nav className="fixed inset-x-0 bottom-0 z-10"
-           style={{ borderTop: "1px solid #E5DECD", background: "rgba(247,243,232,.95)",
-                    backdropFilter: "blur(8px)" }}>
-        <div className="mx-auto flex max-w-[430px] px-3 pb-5 pt-1">
-          {onglet("sejour", "Séjour", <CalendarDays size={17} />)}
-          {onglet("paiements", "Paiements", <Wallet size={17} />)}
-          {onglet("soldes", "Soldes", <Users size={17} />)}
+      {ecran !== "historique" ? (
+        <nav className="fixed inset-x-0 bottom-0 z-10"
+             style={{ borderTop: "1px solid #E5DECD", background: "rgba(247,243,232,.95)",
+                      backdropFilter: "blur(8px)" }}>
+          <div className="mx-auto flex max-w-[430px] px-3 pb-5 pt-1">
+            {onglet("sejour", "Séjour", <CalendarDays size={17} />)}
+            {onglet("paiements", "Paiements", <Wallet size={17} />)}
+            {onglet("soldes", "Soldes", <Users size={17} />)}
+          </div>
+        </nav>
+      ) : (
+        <div className="fixed inset-x-0 bottom-0 z-10 border-t bg-[#F7F3E8]/92 backdrop-blur-md"
+             style={{ borderColor: "#E5DECD" }}>
+          <div className="mx-auto max-w-[430px] px-5 pb-6 pt-4">
+            <button onClick={nouvelleLocation}
+              className="flex w-full items-center justify-center gap-2 rounded-[14px] bg-[#1C1A17] px-5 py-4
+                         text-[15px] font-semibold text-[#F7F3E8] tracking-[-0.01em]">
+              <Plus size={17} strokeWidth={2.5} /> Nouvelle location
+            </button>
+          </div>
         </div>
-      </nav>
+      )}
     </div>
   );
 }

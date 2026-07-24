@@ -84,6 +84,31 @@ export function retirerIndex(cle, jeton) {
   return suite;
 }
 
+/* ---------- partage du lien de session ---------- */
+
+/**
+ * Partage ou copie le lien /s/<jeton>. Renvoie "partage", "copie",
+ * "annule" (l'utilisateur a fermé la feuille de partage), ou l'URL
+ * elle-même si ni l'un ni l'autre n'a fonctionné (affichage manuel).
+ */
+export async function partagerLien(jeton, titre) {
+  const url = `${location.origin}/s/${jeton}`;
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: titre || "Partage", url });
+      return "partage";
+    } catch (e) {
+      if (e?.name === "AbortError") return "annule";
+    }
+  }
+  try {
+    await navigator.clipboard.writeText(url);
+    return "copie";
+  } catch {
+    return url;
+  }
+}
+
 /* ---------- routage minimal ---------- */
 
 export function jetonDeLURL() {
