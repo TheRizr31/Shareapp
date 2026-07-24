@@ -30,10 +30,18 @@ const json = (donnees, statut = 200) =>
 
 const erreur = (message, statut = 400) => json({ erreur: message }, statut);
 
-/** Retrouve une session par son jeton, ou null. */
-async function sessionParJeton(db, jeton) {
-  if (!jeton || typeof jeton !== "string") return null;
-  return db.prepare("SELECT * FROM sessions WHERE jeton = ?").bind(jeton).first();
+/**
+ * Retrouve une session par un jeton quelconque — celui de l'organisateur
+ * (accès complet) ou, pour une cagnotte, celui des contributeurs (lecture
+ * restreinte). Renvoie { session, estOrganisateur } ou null.
+ */
+async function sessionParJetonQuelconque(db, jetonFourni) {
+  if (!jetonFourni || typeof jetonFourni !== "string") return null;
+  const session = await db.prepare(
+    "SELECT * FROM sessions WHERE jeton = ? OR jeton_contributeurs = ?"
+  ).bind(jetonFourni, jetonFourni).first();
+  if (!session) return null;
+  return { session, estOrganisateur: session.jeton === jetonFourni };
 }
 
 /** Marque la session comme modifiée — sert au tri de l'historique. */
@@ -43,8 +51,13 @@ const toucher = (db, id) =>
 
 /* ---------------------------------------------------------------------
  *  Lecture complète d'une session
+ *
+ *  Pour une cagnotte ouverte avec le lien contributeurs (pas celui de
+ *  l'organisateur), les versements sont réduits à leur somme : chacun
+ *  voit l'avancement vers l'objectif, personne ne voit qui a mis quoi
+ *  à part l'organisateur.
  * ------------------------------------------------------------------- */
-async function lireTout(db, session) {
+async function lireTout(db, session, estOrganisateur) {
   const [participants, articles, parts, versements] = await Promise.all([
     db.prepare(
       "SELECT * FROM participants WHERE session_id = ? ORDER BY position, rowid"
@@ -72,9 +85,15 @@ async function lireTout(db, session) {
     });
   }
 
+  const detailRestreint = session.type === "cagnotte" && !estOrganisateur;
+
   return {
     id: session.id,
-    jeton: session.jeton,
+    jeton: estOrganisateur ? session.jeton : session.jeton_contributeurs,
+    ...(session.type === "cagnotte" && estOrganisateur
+      ? { jetonContributeurs: session.jeton_contributeurs }
+      : {}),
+    estOrganisateur,
     type: session.type,
     titre: session.titre,
     service: session.service,
@@ -84,6 +103,8 @@ async function lireTout(db, session) {
     dateDebut: session.date_debut,
     dateFin: session.date_fin,
     modeTransfert: session.mode_transfert,
+    objectif: session.objectif,
+    dateLimite: session.date_limite,
     clotureeLe: session.cloturee_le,
     modifieLe: session.modifie_le,
 
@@ -106,13 +127,17 @@ async function lireTout(db, session) {
       parts: parArticle[a.id] || [],
     })),
 
-    versements: versements.results.map((v) => ({
-      id: v.id,
-      participantId: v.participant_id,
-      montant: v.montant,
-      recu: !!v.recu,
-      date: v.date_versement,
-    })),
+    ...(detailRestreint
+      ? { totalVerse: versements.results.reduce((a, v) => a + v.montant, 0) }
+      : {
+          versements: versements.results.map((v) => ({
+            id: v.id,
+            participantId: v.participant_id,
+            montant: v.montant,
+            recu: !!v.recu,
+            date: v.date_versement,
+          })),
+        }),
   };
 }
 
@@ -135,35 +160,41 @@ async function traiterApi(request, env, action) {
     /* --- création : seule action sans jeton préalable --------------- */
     if (action === "creer") {
       const type = corps.type;
-      if (!["addition", "location"].includes(type)) return erreur("type inconnu");
+      if (!["addition", "location", "cagnotte"].includes(type)) return erreur("type inconnu");
 
       const id = uuid();
       const nouveauJeton = jetonAleatoire();
+      const jetonContributeurs = type === "cagnotte" ? jetonAleatoire() : null;
       const t = maintenant();
       const aujourdhui = new Date().toISOString().slice(0, 10);
       const dansSeptJours = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
 
       await db.prepare(
         `INSERT INTO sessions
-           (id, jeton, type, titre, date_debut, date_fin, cree_le, modifie_le)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+           (id, jeton, jeton_contributeurs, type, titre, date_debut, date_fin, objectif, cree_le, modifie_le)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).bind(
-        id, nouveauJeton, type, corps.titre || "",
+        id, nouveauJeton, jetonContributeurs, type, corps.titre || "",
         type === "location" ? aujourdhui : null,
         type === "location" ? dansSeptJours : null,
+        corps.objectif || 0,
         t, t
       ).run();
 
-      return json({ id, jeton: nouveauJeton, type });
+      return json({
+        id, jeton: nouveauJeton, type,
+        ...(jetonContributeurs ? { jetonContributeurs } : {}),
+      });
     }
 
     /* --- toutes les autres actions exigent un jeton valide ---------- */
-    const session = await sessionParJeton(db, jeton);
-    if (!session) return erreur("Session introuvable", 404);
+    const trouve = await sessionParJetonQuelconque(db, jeton);
+    if (!trouve) return erreur("Session introuvable", 404);
+    const { session, estOrganisateur } = trouve;
 
     switch (action) {
       case "lire":
-        return json(await lireTout(db, session));
+        return json(await lireTout(db, session, estOrganisateur));
 
       /* --- session ------------------------------------------------- */
       case "maj-session": {
@@ -173,6 +204,7 @@ async function traiterApi(request, env, action) {
           totalAttendu: "total_attendu", loyer: "loyer",
           dateDebut: "date_debut", dateFin: "date_fin",
           modeTransfert: "mode_transfert",
+          objectif: "objectif", dateLimite: "date_limite",
         };
         const sets = [], valeurs = [];
         for (const [cle, colonne] of Object.entries(colonnes)) {

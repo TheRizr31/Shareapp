@@ -2,7 +2,7 @@ import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import {
   Plus, Minus, X, Trash2, Copy, ChevronLeft, ChevronDown, ArrowRight, ArrowUpDown,
   AlertCircle, Receipt, Download, Share2, Check, Loader2, Image as ImageIcon,
-  CalendarDays, Wallet, Users, Info, Home, Utensils, KeyRound,
+  CalendarDays, Wallet, Users, Info, Home, Utensils, KeyRound, Gift,
 } from "lucide-react";
 import {
   appeler, creerFile, lireJSON, ecrireJSON, majIndex, retirerIndex,
@@ -3317,6 +3317,568 @@ function ModuleLocation({ onRetour, sessionInitiale }) {
   );
 }
 
+/* ------------------------------------------------------------------ */
+/*  Cagnotte cadeau : un objectif commun, des contributions libres.    */
+/*                                                                     */
+/*  Deux liens par cagnotte — organisateur (voit qui a mis combien) et */
+/*  contributeurs (voit seulement le total collecté par rapport à      */
+/*  l'objectif). Le serveur redistribue les champs en conséquence :    */
+/*  cette différence de vue n'est pas un droit d'écriture, seulement   */
+/*  de lecture — les deux liens peuvent ajouter des personnes et des   */
+/*  contributions de la même façon.                                    */
+/* ------------------------------------------------------------------ */
+
+const CLE_CAGNOTTE_HISTO = "cagnotte:historique";
+const CLE_CAGNOTTE_NOMS = "cagnotte:noms";
+
+const cagnotteEtatVierge = () => ({
+  titre: "",
+  objectif: 0,
+  dateLimite: null,
+  participants: [],
+  estOrganisateur: true,
+  jetonContributeurs: null,
+  versements: [],
+  totalVerse: 0,
+  clotureeLe: null,
+});
+
+/** Convertit la réponse de l'API (redigée ou non selon le lien utilisé). */
+function versEtatLocalCagnotte(session) {
+  return {
+    titre: session.titre || "",
+    objectif: session.objectif ?? 0,
+    dateLimite: session.dateLimite || null,
+    participants: session.participants.map((p) => ({ id: p.id, nom: p.nom, couleur: p.couleur })),
+    estOrganisateur: !!session.estOrganisateur,
+    jetonContributeurs: session.jetonContributeurs || null,
+    versements: session.versements
+      ? session.versements.map((v) => ({ id: v.id, participantId: v.participantId, montant: v.montant, date: v.date }))
+      : null, // null = vue contributeurs : le détail n'est pas transmis par le serveur
+    totalVerse: session.versements
+      ? session.versements.reduce((a, v) => a + v.montant, 0)
+      : (session.totalVerse ?? 0),
+    clotureeLe: session.clotureeLe ?? null,
+  };
+}
+
+function ModuleCagnotte({ onRetour, sessionInitiale }) {
+  const [pret, setPret] = useState(!!sessionInitiale);
+  const [ecran, setEcran] = useState(sessionInitiale ? "cagnotte" : "historique");
+  const [jeton, setJeton] = useState(sessionInitiale?.jeton ?? null);
+  const [etat, setEtat] = useState(() => (sessionInitiale ? versEtatLocalCagnotte(sessionInitiale) : cagnotteEtatVierge()));
+  const [historique, setHistorique] = useState([]);
+  const [nomsConnus, setNomsConnus] = useState([]);
+  const [sauvegarde, setSauvegarde] = useState("repos");
+  const [partageOrgEtat, setPartageOrgEtat] = useState("pret");
+  const [partageContribEtat, setPartageContribEtat] = useState("pret");
+  const [moi, setMoi] = useState(null);
+  const [demanderQui, setDemanderQui] = useState(false);
+  const [nomQuiEsTu, setNomQuiEsTu] = useState("");
+  const [nouveauNom, setNouveauNom] = useState("");
+  const [contributeurChoisi, setContributeurChoisi] = useState(null);
+  const [montantSaisi, setMontantSaisi] = useState(0);
+
+  const { titre, objectif, dateLimite, participants, estOrganisateur } = etat;
+  const totalCollecte = etat.versements
+    ? etat.versements.reduce((a, v) => a + v.montant, 0)
+    : etat.totalVerse;
+  const progres = objectif > 0 ? Math.min(1, totalCollecte / objectif) : 0;
+
+  const [{ executer, differe }] = useState(() => creerFile(setSauvegarde));
+
+  /* --- chargement initial --- */
+  useEffect(() => {
+    if (sessionInitiale) return;
+    setNomsConnus(lireJSON(CLE_CAGNOTTE_NOMS, []));
+    const h = lireJSON(CLE_CAGNOTTE_HISTO, []);
+    setHistorique(h);
+    if (h.length === 0) {
+      creerSession().then(() => setEcran("cagnotte")).finally(() => setPret(true));
+    } else {
+      setPret(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionInitiale]);
+
+  const creerSession = async () => {
+    const r = await appeler("creer", { type: "cagnotte" });
+    setJeton(r.jeton);
+    setEtat({ ...cagnotteEtatVierge(), jetonContributeurs: r.jetonContributeurs, estOrganisateur: true });
+    allerVersSession(r.jeton);
+    setHistorique(majIndex(CLE_CAGNOTTE_HISTO, r.jeton, {
+      titre: "", modifieLe: Date.now(), nParticipants: 0, objectif: 0, totalVerse: 0,
+    }));
+    return r.jeton;
+  };
+
+  /** Tient à jour le résumé affiché dans "Mes cagnottes", sur cet appareil. */
+  useEffect(() => {
+    if (!pret || !jeton) return;
+    setHistorique(majIndex(CLE_CAGNOTTE_HISTO, jeton, {
+      titre, modifieLe: Date.now(),
+      nParticipants: participants.length, objectif, totalVerse: totalCollecte,
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pret, jeton, titre, participants.length, objectif, totalCollecte]);
+
+  useEffect(() => {
+    if (!pret || nomsConnus.length === 0) return;
+    ecrireJSON(CLE_CAGNOTTE_NOMS, nomsConnus);
+  }, [nomsConnus, pret]);
+
+  /* --- "qui es-tu" : repère local, pas un compte --- */
+  useEffect(() => {
+    if (!pret || !jeton || participants.length === 0) return;
+    const m = lireJSON(`moi:${jeton}`, null);
+    if (m === null) setDemanderQui(true);
+    else if (m !== "SKIP" && participants.some((p) => p.id === m)) setMoi(m);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pret, jeton, participants.length]);
+
+  const majEtat = useCallback((f) => setEtat((e) => ({ ...e, ...f(e) })), []);
+
+  const marquerMoi = (id) => {
+    setMoi(id); ecrireJSON(`moi:${jeton}`, id); setDemanderQui(false); setNomQuiEsTu("");
+  };
+  const passerQuiEsTu = () => {
+    ecrireJSON(`moi:${jeton}`, "SKIP"); setDemanderQui(false); setNomQuiEsTu("");
+  };
+
+  const changerTitre = (valeur) => {
+    majEtat(() => ({ titre: valeur }));
+    if (jeton) differe("session:titre", () => appeler("maj-session", { jeton, champs: { titre: valeur } }));
+  };
+  const changerObjectif = (centimes) => {
+    majEtat(() => ({ objectif: centimes }));
+    if (jeton) differe("session:objectif", () => appeler("maj-session", { jeton, champs: { objectif: centimes } }));
+  };
+  const changerDateLimite = (valeur) => {
+    majEtat(() => ({ dateLimite: valeur || null }));
+    if (jeton) differe("session:dateLimite", () => appeler("maj-session", { jeton, champs: { dateLimite: valeur } }));
+  };
+
+  const partagerLeLienOrganisateur = async () => {
+    if (!jeton || !estOrganisateur) return;
+    const r = await partagerLien(jeton, titre || "Cagnotte");
+    if (r === "copie") { setPartageOrgEtat("copie"); setTimeout(() => setPartageOrgEtat("pret"), 2500); }
+  };
+  const partagerLeLienContributeurs = async () => {
+    const cible = estOrganisateur ? etat.jetonContributeurs : jeton;
+    if (!cible) return;
+    const r = await partagerLien(cible, titre || "Cagnotte");
+    if (r === "copie") { setPartageContribEtat("copie"); setTimeout(() => setPartageContribEtat("pret"), 2500); }
+  };
+
+  /* --- participants --- */
+  const ajouterNom = async (nom) => {
+    const n = nom.trim();
+    if (!n || !jeton) return;
+    if (participants.some((p) => p.nom.toLowerCase() === n.toLowerCase())) return;
+    const couleur = COULEURS[participants.length % COULEURS.length];
+    setNouveauNom("");
+    try {
+      const { id } = await executer(() => appeler("ajouter-participant", { jeton, nom: n, couleur }));
+      majEtat((e) => ({ participants: [...e.participants, { id, nom: n, couleur }] }));
+      setNomsConnus((ns) => [n, ...ns.filter((x) => x.toLowerCase() !== n.toLowerCase())].slice(0, 12));
+      return id;
+    } catch (e) { console.error(e); }
+  };
+
+  const ajouterEtMarquerMoi = async () => {
+    const id = await ajouterNom(nomQuiEsTu);
+    if (id) marquerMoi(id);
+  };
+
+  const retirerParticipant = (id) => {
+    majEtat((e) => ({
+      participants: e.participants.filter((p) => p.id !== id),
+      versements: e.versements ? e.versements.filter((v) => v.participantId !== id) : e.versements,
+    }));
+    if (jeton) executer(() => appeler("supprimer-participant", { jeton, id })).catch(() => {});
+    if (contributeurChoisi === id) setContributeurChoisi(null);
+  };
+
+  /* --- contributions --- */
+  const ajouterContribution = async () => {
+    const c = montantSaisi;
+    const pid = contributeurChoisi || moi;
+    if (c <= 0 || !pid || !jeton) return;
+    try {
+      const { id } = await executer(() =>
+        appeler("ajouter-versement", { jeton, participantId: pid, montant: c, recu: true }));
+      majEtat((e) => ({
+        versements: e.versements
+          ? [...e.versements, { id, participantId: pid, montant: c, date: new Date().toISOString().slice(0, 10) }]
+          : e.versements,
+        totalVerse: e.totalVerse + c,
+      }));
+      setMontantSaisi(0);
+      setContributeurChoisi(null);
+    } catch (e) { console.error(e); }
+  };
+
+  const supprimerContribution = (id) => {
+    const v = etat.versements?.find((x) => x.id === id);
+    majEtat((e) => ({
+      versements: e.versements ? e.versements.filter((x) => x.id !== id) : e.versements,
+      totalVerse: v ? e.totalVerse - v.montant : e.totalVerse,
+    }));
+    if (jeton) executer(() => appeler("supprimer-versement", { jeton, id })).catch(() => {});
+  };
+
+  /* --- historique --- */
+  const cloturer = async () => {
+    if (jeton) {
+      try { await executer(() => appeler("maj-session", { jeton, champs: { cloturee: true } })); }
+      catch (e) { console.error(e); }
+    }
+    setJeton(null);
+    setEtat(cagnotteEtatVierge());
+    allerVersAccueil();
+    setEcran("historique");
+  };
+
+  const rouvrir = async (entree) => {
+    try {
+      const session = await appeler("lire", { jeton: entree.jeton });
+      setJeton(session.jeton);
+      setEtat(versEtatLocalCagnotte(session));
+      allerVersSession(session.jeton);
+      setEcran("cagnotte");
+      if (session.clotureeLe) {
+        executer(() => appeler("maj-session", { jeton: session.jeton, champs: { cloturee: false } })).catch(() => {});
+      }
+    } catch (e) {
+      console.error(e);
+      setHistorique(retirerIndex(CLE_CAGNOTTE_HISTO, entree.jeton));
+    }
+  };
+
+  const supprimerHisto = async (jetonASupprimer) => {
+    setHistorique(retirerIndex(CLE_CAGNOTTE_HISTO, jetonASupprimer));
+    try { await appeler("supprimer-session", { jeton: jetonASupprimer }); } catch (e) { console.error(e); }
+  };
+
+  const nouvelleCagnotte = async () => {
+    try {
+      await creerSession();
+      setEcran("cagnotte");
+    } catch (e) { console.error(e); }
+  };
+
+  if (!pret) {
+    return (
+      <div className="flex min-h-screen items-center justify-center" style={{ background: "#F7F3E8" }}>
+        <Loader2 size={22} className="animate-spin" style={{ color: "#B0A897" }} />
+      </div>
+    );
+  }
+
+  const styles = `
+    @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Roboto+Mono:wght@400;500;700&display=swap');
+    @keyframes monte { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+    .monte { animation: monte .28s cubic-bezier(.2,.7,.3,1) both; }
+    @media (prefers-reduced-motion: reduce) { .monte { animation: none; } }
+  `;
+
+  return (
+    <div className="min-h-screen antialiased"
+         style={{ background: "#F7F3E8", color: "#1C1A17", fontFamily: "'Archivo', system-ui, sans-serif" }}>
+      <style>{styles}</style>
+      <div className="mx-auto max-w-[430px] px-5 pb-32">
+
+        {/* ================= HISTORIQUE ================= */}
+        {ecran === "historique" && (
+          <>
+            <header className="pt-10 pb-8">
+              <button onClick={onRetour} className="mb-5 -ml-1 flex items-center gap-1 text-[13px]"
+                style={{ color: "#8B8578" }}>
+                <ChevronLeft size={16} /> Accueil
+              </button>
+              <h1 className="text-[34px] font-bold leading-[0.95] tracking-[-0.035em]">Mes cagnottes</h1>
+              <p className="mt-2 text-[13px]" style={{ color: "#8B8578" }}>
+                {historique.length === 0
+                  ? "Rien pour l'instant."
+                  : `${historique.length} ${historique.length > 1 ? "cagnottes gardées" : "cagnotte gardée"}`}
+              </p>
+            </header>
+
+            {historique.length === 0 ? (
+              <p className="rounded-[18px] border border-dashed px-6 py-12 text-center text-[13.5px] leading-relaxed"
+                 style={{ borderColor: "#DDD5C4", color: "#8B8578" }}>
+                Les cagnottes apparaîtront ici.
+              </p>
+            ) : (
+              <ul className="space-y-2.5">
+                {historique.map((h, i) => (
+                  <li key={h.jeton} className="monte flex items-center gap-3 rounded-[18px] p-4"
+                      style={{ background: "#fff", boxShadow: "0 0 0 1px #E9E2D2", animationDelay: `${i * 35}ms` }}>
+                    <button onClick={() => rouvrir(h)} className="min-w-0 flex-1 text-left">
+                      <span className="block truncate text-[15px] font-semibold tracking-[-0.01em]">
+                        {h.titre || "Cagnotte"}
+                      </span>
+                      <span className="mt-0.5 block text-[11.5px]"
+                            style={{ fontFamily: "'Roboto Mono', monospace", color: "#8B8578" }}>
+                        {h.nParticipants} pers.{h.objectif > 0 ? ` · objectif ${fmt(h.objectif)} €` : ""}
+                      </span>
+                    </button>
+                    <span className="shrink-0 text-[17px] font-bold tabular-nums"
+                          style={{ fontFamily: "'Roboto Mono', monospace" }}>
+                      {fmt(h.totalVerse || 0)} €
+                    </span>
+                    <button onClick={() => supprimerHisto(h.jeton)}
+                            aria-label={`Supprimer ${h.titre || "cette cagnotte"}`}
+                            className="shrink-0" style={{ color: "#C4BCA9" }}>
+                      <Trash2 size={15} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
+        )}
+
+        {/* ================= CAGNOTTE ================= */}
+        {ecran !== "historique" && (<>
+          <header className="pt-10 pb-8">
+            <div className="mb-5 flex items-center justify-between">
+              <button onClick={() => { allerVersAccueil(); setEcran("historique"); }}
+                className="-ml-1 flex items-center gap-1 text-[13px]" style={{ color: "#8B8578" }}>
+                <ChevronLeft size={16} /> Mes cagnottes
+              </button>
+              <span className="flex items-center gap-1.5 text-[11px]"
+                    style={{ fontFamily: "'Roboto Mono', monospace",
+                             color: sauvegarde === "erreur" ? "#C1362F" : "#B0A897" }}>
+                {sauvegarde === "cours" ? <Loader2 size={12} className="animate-spin" />
+                  : sauvegarde === "erreur" ? <AlertCircle size={12} /> : <Check size={12} />}
+                {sauvegarde === "cours" ? "…" : sauvegarde === "erreur" ? "Non enregistré" : "Enregistré"}
+              </span>
+            </div>
+            <input value={titre} onChange={(e) => changerTitre(e.target.value)}
+              placeholder="Cadeau pour…" aria-label="Nom de la cagnotte"
+              className="w-full rounded-md bg-transparent -ml-1 px-1 text-[32px] font-bold
+                         leading-[0.95] tracking-[-0.035em] focus:outline-none" />
+            {!estOrganisateur && (
+              <p className="mt-2 flex items-center gap-1.5 text-[11.5px]" style={{ color: "#8B8578" }}>
+                <Info size={12} /> Tu vois le total collecté, pas le détail par personne.
+              </p>
+            )}
+          </header>
+
+          {/* liens de partage */}
+          <div className="mb-6 space-y-2">
+            <button onClick={partagerLeLienContributeurs}
+              className="monte flex w-full items-center gap-2.5 rounded-[14px] bg-white p-3 text-left
+                         transition-colors hover:bg-[#F5F1E5]"
+              style={{ boxShadow: "0 0 0 1px #E9E2D2" }}>
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
+                    style={{ background: "#F2EDE0", color: "#8B8578" }}>
+                <Share2 size={14} />
+              </span>
+              <span className="min-w-0 flex-1 text-[12.5px] font-medium">Lien à partager au groupe</span>
+              <span className="shrink-0 text-[12px] font-semibold" style={{ color: "#1C1A17" }}>
+                {partageContribEtat === "copie" ? "Copié !" : "Partager"}
+              </span>
+            </button>
+            {estOrganisateur && etat.jetonContributeurs && (
+              <button onClick={partagerLeLienOrganisateur}
+                className="monte flex w-full items-center gap-2.5 rounded-[14px] p-3 text-left transition-colors
+                           hover:bg-[#F0EADB]"
+                style={{ background: "#FBEBE8", boxShadow: "0 0 0 1px #F0D5CF" }}>
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
+                      style={{ background: "#F0D5CF", color: "#C1362F" }}>
+                  <Share2 size={14} />
+                </span>
+                <span className="min-w-0 flex-1 text-[12.5px] font-medium" style={{ color: "#C1362F" }}>
+                  Ton lien organisateur — garde-le pour toi
+                </span>
+                <span className="shrink-0 text-[12px] font-semibold" style={{ color: "#C1362F" }}>
+                  {partageOrgEtat === "copie" ? "Copié !" : "Partager"}
+                </span>
+              </button>
+            )}
+          </div>
+
+          {/* objectif + progression */}
+          <section className="mb-8 rounded-[18px] p-4" style={{ background: "#fff", boxShadow: "0 0 0 1px #E9E2D2" }}>
+            {estOrganisateur ? (
+              <div className="mb-3 flex items-baseline justify-between gap-3">
+                <span className="text-[14px]" style={{ color: "#8B8578" }}>Objectif</span>
+                <div className="flex shrink-0 items-baseline gap-1">
+                  <ChampMontant centimes={objectif} onChange={changerObjectif} aria-label="Montant objectif"
+                    className="w-[92px] rounded-md bg-transparent px-1.5 py-1 text-right text-[19px]
+                               font-bold tabular-nums focus:outline-none"
+                    style={{ fontFamily: "'Roboto Mono', monospace" }} />
+                  <span className="text-[13px] font-medium" style={{ color: "#8B8578" }}>€</span>
+                </div>
+              </div>
+            ) : objectif > 0 && (
+              <div className="mb-3 flex items-baseline justify-between gap-3">
+                <span className="text-[14px]" style={{ color: "#8B8578" }}>Objectif</span>
+                <span className="text-[19px] font-bold tabular-nums" style={{ fontFamily: "'Roboto Mono', monospace" }}>
+                  {fmt(objectif)} €
+                </span>
+              </div>
+            )}
+
+            {objectif > 0 && (
+              <div className="mb-3 h-2 overflow-hidden rounded-full" style={{ background: "#F0EADB" }}>
+                <div className="h-full rounded-full transition-all"
+                     style={{ width: `${progres * 100}%`, background: progres >= 1 ? "#2E6F5E" : "#C1362F" }} />
+              </div>
+            )}
+
+            <p className="text-[13px] tabular-nums" style={{ fontFamily: "'Roboto Mono', monospace", color: "#8B8578" }}>
+              {fmt(totalCollecte)} € collectés{objectif > 0 ? ` sur ${fmt(objectif)} €` : ""}
+            </p>
+
+            {estOrganisateur ? (
+              <label className="mt-3 block">
+                <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.14em]"
+                      style={{ fontFamily: "'Roboto Mono', monospace", color: "#8B8578" }}>
+                  Date limite (optionnel)
+                </span>
+                <input type="date" value={dateLimite || ""} onChange={(e) => changerDateLimite(e.target.value)}
+                  className="rounded-[10px] px-2.5 py-2 text-[13px] focus:outline-none"
+                  style={{ border: "1px solid #E0D8C7", background: "#FCFAF5",
+                           fontFamily: "'Roboto Mono', monospace" }} />
+              </label>
+            ) : dateLimite && (
+              <p className="mt-2 text-[12px]" style={{ fontFamily: "'Roboto Mono', monospace", color: "#8B8578" }}>
+                Avant le {dateCourte(dateLimite)}
+              </p>
+            )}
+          </section>
+
+          {/* participants */}
+          <section className="mb-8">
+            <div className="mb-3.5 flex items-center gap-3">
+              <span className="text-[10px] font-bold uppercase tracking-[0.2em]"
+                    style={{ fontFamily: "'Roboto Mono', monospace", color: "#8B8578" }}>Qui participe</span>
+              <span className="h-px flex-1" style={{ background: "#DDD5C4" }} />
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {participants.map((p) => (
+                <span key={p.id} className="flex items-center gap-2 rounded-full bg-white py-1 pl-1 pr-2.5"
+                      style={{ boxShadow: "0 1px 0 #E9E2D2, 0 0 0 1px #E9E2D2" }}>
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full
+                                   text-[10px] font-bold text-[#F7F3E8]" style={{ background: p.couleur }}>
+                    {p.nom.slice(0, 2).toUpperCase()}
+                  </span>
+                  <span className="text-[13.5px] font-medium">
+                    {p.nom}{p.id === moi && <span style={{ color: "#8B8578" }}> (vous)</span>}
+                  </span>
+                  <button onClick={() => retirerParticipant(p.id)} aria-label={`Retirer ${p.nom}`}
+                          className="text-[#C4BCA9] hover:text-[#C1362F] transition-colors">
+                    <X size={13} strokeWidth={2.5} />
+                  </button>
+                </span>
+              ))}
+              <span className="flex items-center gap-1 rounded-full border border-dashed border-[#CDC4B0] py-1 pl-3 pr-1">
+                <input value={nouveauNom} onChange={(e) => setNouveauNom(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && ajouterNom(nouveauNom)}
+                  placeholder="Prénom" enterKeyHint="done"
+                  className="w-[68px] bg-transparent text-[13.5px] placeholder-[#B0A897] focus:outline-none" />
+                <button onClick={() => ajouterNom(nouveauNom)} disabled={!nouveauNom.trim()}
+                        aria-label="Ajouter cette personne"
+                        className="flex h-6 w-6 items-center justify-center rounded-full bg-[#1C1A17]
+                                   text-[#F7F3E8] disabled:bg-[#E0D8C7] disabled:text-[#B0A897] transition-colors">
+                  <Plus size={13} strokeWidth={2.5} />
+                </button>
+              </span>
+            </div>
+          </section>
+
+          {/* contribution */}
+          {participants.length > 0 && (
+            <section className="mb-8 rounded-[18px] bg-white p-4" style={{ boxShadow: "0 2px 0 #E9E2D2, 0 0 0 1px #E9E2D2" }}>
+              <div className="mb-3.5 flex items-center gap-3">
+                <span className="text-[10px] font-bold uppercase tracking-[0.2em]"
+                      style={{ fontFamily: "'Roboto Mono', monospace", color: "#8B8578" }}>
+                  {estOrganisateur ? "Contributions" : "Ma contribution"}
+                </span>
+                <span className="h-px flex-1" style={{ background: "#DDD5C4" }} />
+              </div>
+
+              {estOrganisateur && etat.versements && etat.versements.length > 0 && (
+                <ul className="mb-3 space-y-1.5 border-b border-dashed pb-3" style={{ borderColor: "#E5DECD" }}>
+                  {etat.versements.map((v) => {
+                    const p = participants.find((x) => x.id === v.participantId);
+                    return (
+                      <li key={v.id} className="flex items-center gap-2.5 text-[13px]">
+                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full
+                                         text-[9px] font-bold text-[#F7F3E8]" style={{ background: p?.couleur || "#B0A897" }}>
+                          {(p?.nom || "?").slice(0, 2).toUpperCase()}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate">{p?.nom || "?"}</span>
+                        <span className="font-bold tabular-nums" style={{ fontFamily: "'Roboto Mono', monospace" }}>
+                          {fmt(v.montant)} €
+                        </span>
+                        <button onClick={() => supprimerContribution(v.id)} aria-label="Supprimer cette contribution"
+                                style={{ color: "#C4BCA9" }}>
+                          <X size={13} strokeWidth={2.5} />
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+
+              <div className="flex items-center gap-2 overflow-x-auto pb-0.5">
+                {participants.map((p) => (
+                  <Pastille key={p.id} participant={p}
+                    actif={contributeurChoisi ? contributeurChoisi === p.id : p.id === moi}
+                    onClick={() => setContributeurChoisi(p.id)} />
+                ))}
+              </div>
+              <div className="mt-3 flex items-center gap-2">
+                <ChampMontant centimes={montantSaisi} onChange={setMontantSaisi} aria-label="Montant de la contribution"
+                  className="w-[90px] rounded-md bg-[#FCFAF5] px-2 py-1.5 text-right text-[15px]
+                             font-bold tabular-nums focus:outline-none"
+                  style={{ border: "1px solid #E0D8C7", fontFamily: "'Roboto Mono', monospace" }} />
+                <span className="text-[13px] font-medium" style={{ color: "#8B8578" }}>€</span>
+                <button onClick={ajouterContribution} disabled={montantSaisi <= 0 || !(contributeurChoisi || moi)}
+                  className="ml-auto flex items-center gap-1.5 rounded-[12px] bg-[#1C1A17] px-4 py-2.5
+                             text-[13px] font-semibold text-[#F7F3E8] disabled:bg-[#E0D8C7]
+                             disabled:text-[#B0A897] transition-colors">
+                  <Plus size={14} strokeWidth={2.5} /> Ajouter
+                </button>
+              </div>
+            </section>
+          )}
+
+          <button onClick={cloturer}
+            className="w-full rounded-[14px] border border-dashed py-3.5 text-[13px] font-semibold
+                       transition-colors hover:border-[#1C1A17] hover:text-[#1C1A17]"
+            style={{ borderColor: "#CDC4B0", color: "#8B8578" }}>
+            Terminer et ranger dans l'historique
+          </button>
+        </>)}
+      </div>
+
+      {ecran === "historique" && (
+        <div className="fixed inset-x-0 bottom-0 z-10 border-t bg-[#F7F3E8]/92 backdrop-blur-md"
+             style={{ borderColor: "#E5DECD" }}>
+          <div className="mx-auto max-w-[430px] px-5 pb-6 pt-4">
+            <button onClick={nouvelleCagnotte}
+              className="flex w-full items-center justify-center gap-2 rounded-[14px] bg-[#1C1A17] px-5 py-4
+                         text-[15px] font-semibold text-[#F7F3E8] tracking-[-0.01em]">
+              <Plus size={17} strokeWidth={2.5} /> Nouvelle cagnotte
+            </button>
+          </div>
+        </div>
+      )}
+
+      {demanderQui && (
+        <QuiEsTu participants={participants} nouveauNom={nomQuiEsTu}
+          onChangeNouveauNom={(e) => setNomQuiEsTu(e.target.value)}
+          onAjouter={ajouterEtMarquerMoi} onChoisir={marquerMoi} onPasser={passerQuiEsTu} />
+      )}
+    </div>
+  );
+}
+
 /* ==================== ACCUEIL ET NAVIGATION ==================== */
 
 const stylesGlobaux = `
@@ -3343,6 +3905,14 @@ function Accueil({ onChoisir }) {
       detail: "Dates par personne, suivi des versements, cagnotte commune.",
       icone: <KeyRound size={20} />,
       teinte: "#2E6F5E",
+    },
+    {
+      cle: "cagnotte",
+      titre: "La cagnotte cadeau",
+      sous: "Un objectif, des contributions libres",
+      detail: "Un lien pour l'organisateur, un autre pour le groupe.",
+      icone: <Gift size={20} />,
+      teinte: "#B5761F",
     },
   ];
 
@@ -3465,5 +4035,6 @@ export default function Partage() {
 
   if (module === "addition") return <ModuleAddition onRetour={retour} sessionInitiale={session} />;
   if (module === "location") return <ModuleLocation onRetour={retour} sessionInitiale={session} />;
+  if (module === "cagnotte") return <ModuleCagnotte onRetour={retour} sessionInitiale={session} />;
   return <Accueil onChoisir={choisir} />;
 }
