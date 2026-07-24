@@ -11,10 +11,11 @@ import {
 } from "./api.js";
 
 /* ==================================================================== */
-/*  Partage — deux modules sous une même enveloppe.                     */
+/*  ShareApp — trois modules sous une même enveloppe.                   */
 /*                                                                      */
 /*    Addition  : partage d'une note de restaurant, article par article */
 /*    Location  : partage d'un loyer au prorata des nuitées             */
+/*    Cagnotte  : cagnotte cadeau à objectif commun                     */
 /*                                                                      */
 /*  Chaque module garde son état et son stockage propres ; l'accueil    */
 /*  n'est qu'un aiguillage.                                             */
@@ -23,11 +24,13 @@ import {
 const CLE_MODULE = "partage:module";
 
 /* ------------------------------------------------------------------ */
-/*  Direction : le ticket de caisse. Papier ivoire, encre thermique,   */
-/*  un seul accent — le rouge tampon des caisses enregistreuses.       */
+/*  Direction : "Petite Monnaie, édition sapin". Toujours le ticket de */
+/*  caisse, mais en vert sapin sur papier clair au lieu du rouge tampon.*/
 /*                                                                     */
-/*  papier   #F7F3E8    encre    #1C1A17    encre-pale #8B8578         */
-/*  tampon   #C1362F    filet    #DDD5C4    ombre      #E9E2D2         */
+/*  papier   #EEF0E7    carte   #FFFFFF    encre     #1B231C           */
+/*  sourdine #7C8172    filet   #DCE1D2                                 */
+/*  sapin    #1F4B3A    sapin-clair #457765                            */
+/*  or       #A97F2E    or-pale     #F3E9D4                            */
 /* ------------------------------------------------------------------ */
 
 const COULEURS = [
@@ -254,7 +257,7 @@ function dessinerTicket(titre, dateISO, calcul) {
   x.scale(E, E);
   x.textBaseline = "alphabetic";
 
-  x.fillStyle = "#F7F3E8";
+  x.fillStyle = "#EEF0E7";
   x.fillRect(0, 0, L, hMax);
 
   const tronque = (texte, largeurMax) => {
@@ -266,12 +269,12 @@ function dessinerTicket(titre, dateISO, calcul) {
 
   let y = pad + 26;
 
-  x.fillStyle = "#1C1A17";
+  x.fillStyle = "#1B231C";
   x.font = sans(30, "700");
   x.fillText(tronque(titre, L - pad * 2), pad, y);
 
   y += 24;
-  x.fillStyle = "#8B8578";
+  x.fillStyle = "#7C8172";
   x.font = mono(14);
   x.fillText(
     new Date(dateISO).toLocaleDateString("fr-FR", {
@@ -281,7 +284,7 @@ function dessinerTicket(titre, dateISO, calcul) {
   );
 
   y += 30;
-  x.strokeStyle = "#DDD5C4";
+  x.strokeStyle = "#DCE1D2";
   x.lineWidth = 1;
   x.setLineDash([4, 4]);
   x.beginPath(); x.moveTo(pad, y); x.lineTo(L - pad, y); x.stroke();
@@ -290,20 +293,20 @@ function dessinerTicket(titre, dateISO, calcul) {
 
   calcul.resultats.forEach((r, index) => {
     if (index > 0) {
-      x.strokeStyle = "#E5DECD";
+      x.strokeStyle = "#DCE1D1";
       x.lineWidth = 1;
       x.beginPath(); x.moveTo(pad, y - 20); x.lineTo(L - pad, y - 20); x.stroke();
     }
 
     x.fillStyle = r.couleur;
     x.beginPath(); x.arc(pad + 14, y - 6, 14, 0, Math.PI * 2); x.fill();
-    x.fillStyle = "#F7F3E8";
+    x.fillStyle = "#EEF0E7";
     x.font = sans(12, "700");
     x.textAlign = "center";
     x.fillText(r.nom.slice(0, 2).toUpperCase(), pad + 14, y - 1);
     x.textAlign = "left";
 
-    x.fillStyle = "#1C1A17";
+    x.fillStyle = "#1B231C";
     x.font = mono(21, "700");
     const largeurTotal = x.measureText(fmt(r.total) + " €").width;
     x.textAlign = "right";
@@ -317,7 +320,7 @@ function dessinerTicket(titre, dateISO, calcul) {
 
     x.font = mono(13);
     for (const a of r.articles) {
-      x.fillStyle = "#8B8578";
+      x.fillStyle = "#7C8172";
       const q = a.quantite > 1 ? `${a.quantite}× ` : "";
       const d = a.partage > 1
         ? (a.fraction && a.fraction[0] !== a.fraction[1]
@@ -334,14 +337,14 @@ function dessinerTicket(titre, dateISO, calcul) {
     }
 
     if (r.articles.length === 0) {
-      x.fillStyle = "#B0A897";
+      x.fillStyle = "#A7AF98";
       x.font = mono(13);
       x.fillText("rien pris", pad + 38, y);
       y += H_LIGNE;
     }
 
     if (r.service > 0) {
-      x.fillStyle = "#8B8578";
+      x.fillStyle = "#7C8172";
       x.font = mono(13);
       x.fillText("Service", pad + 38, y);
       x.textAlign = "right";
@@ -355,11 +358,11 @@ function dessinerTicket(titre, dateISO, calcul) {
 
   // bloc total
   y -= 6;
-  x.strokeStyle = "#1C1A17";
+  x.strokeStyle = "#1B231C";
   x.lineWidth = 1.5;
   x.beginPath(); x.moveTo(pad, y); x.lineTo(L - pad, y); x.stroke();
   y += 30;
-  x.fillStyle = "#1C1A17";
+  x.fillStyle = "#1B231C";
   x.font = sans(19, "700");
   x.fillText("Total", pad, y);
   x.font = mono(21, "700");
@@ -374,7 +377,7 @@ function dessinerTicket(titre, dateISO, calcul) {
   finale.height = hReelle * E;
   const fx = finale.getContext("2d");
   if (!fx) return c;
-  fx.fillStyle = "#F7F3E8";
+  fx.fillStyle = "#EEF0E7";
   fx.fillRect(0, 0, finale.width, finale.height);
   fx.drawImage(c, 0, 0, L * E, hReelle * E, 0, 0, L * E, hReelle * E);
 
@@ -394,10 +397,10 @@ function QuiEsTu({ participants, nouveauNom, onChangeNouveauNom, onAjouter, onCh
          style={{ background: "rgba(28,26,23,.55)", backdropFilter: "blur(3px)", WebkitBackdropFilter: "blur(3px)" }}
          onClick={onPasser}>
       <div className="monte relative w-full max-w-[400px] rounded-[20px] p-5"
-           style={{ background: "#F7F3E8", border: "1px solid #E5DECD", boxShadow: "0 20px 50px rgba(28,26,23,.35)" }}
+           style={{ background: "#EEF0E7", border: "1px solid #DCE1D1", boxShadow: "0 20px 50px rgba(28,26,23,.35)" }}
            onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <h2 className="text-[19px] font-bold tracking-[-0.02em]">Qui es-tu ?</h2>
-        <p className="mt-1.5 text-[12.5px] leading-relaxed text-[#8B8578]">
+        <p className="mt-1.5 text-[12.5px] leading-relaxed text-[#7C8172]">
           Pour te repérer plus vite dans les écrans. Ça ne change rien pour les autres.
         </p>
         {participants.length > 0 && (
@@ -405,10 +408,10 @@ function QuiEsTu({ participants, nouveauNom, onChangeNouveauNom, onAjouter, onCh
             {participants.map((p) => (
               <button key={p.id} onClick={() => onChoisir(p.id)}
                 className="flex w-full items-center gap-3 rounded-[12px] border px-3 py-2.5 text-left
-                           transition-colors hover:border-[#CDC4B0]"
-                style={{ borderColor: "#E0D8C7" }}>
+                           transition-colors hover:border-[#C2C9B4]"
+                style={{ borderColor: "#D7DCCB" }}>
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full
-                                 text-[10px] font-bold text-[#F7F3E8]"
+                                 text-[10px] font-bold text-[#EEF0E7]"
                       style={{ background: p.couleur }}>
                   {p.nom.slice(0, 2).toUpperCase()}
                 </span>
@@ -418,20 +421,20 @@ function QuiEsTu({ participants, nouveauNom, onChangeNouveauNom, onAjouter, onCh
           </div>
         )}
         <div className="mt-3 flex items-center gap-1 rounded-full border border-dashed px-3 py-1.5"
-             style={{ borderColor: "#CDC4B0" }}>
+             style={{ borderColor: "#C2C9B4" }}>
           <input value={nouveauNom} onChange={onChangeNouveauNom}
             onKeyDown={(e) => e.key === "Enter" && onAjouter()}
             placeholder={participants.length > 0 ? "Je ne suis pas dans la liste" : "Ton prénom"}
-            className="w-full bg-transparent text-[13.5px] placeholder-[#B0A897] focus:outline-none" />
+            className="w-full bg-transparent text-[13.5px] placeholder-[#A7AF98] focus:outline-none" />
           <button onClick={onAjouter} disabled={!nouveauNom.trim()}
             className="shrink-0 rounded-full px-2.5 py-1 text-[12px] font-semibold transition-colors"
-            style={{ color: nouveauNom.trim() ? "#1C1A17" : "#B0A897" }}>
+            style={{ color: nouveauNom.trim() ? "#1B231C" : "#A7AF98" }}>
             Ajouter
           </button>
         </div>
         <button onClick={onPasser}
-          className="mt-4 w-full text-center text-[12.5px] font-medium transition-colors hover:text-[#1C1A17]"
-          style={{ color: "#8B8578" }}>
+          className="mt-4 w-full text-center text-[12.5px] font-medium transition-colors hover:text-[#1B231C]"
+          style={{ color: "#7C8172" }}>
           Passer
         </button>
       </div>
@@ -448,15 +451,15 @@ function Pastille({ participant, actif, onClick, taille = 36 }) {
       aria-label={participant.nom}
       style={{
         width: taille, height: taille,
-        background: actif ? participant.couleur : "#F7F3E8",
-        color: actif ? "#F7F3E8" : "#B0A897",
-        borderColor: actif ? participant.couleur : "#DDD5C4",
+        background: actif ? participant.couleur : "#EEF0E7",
+        color: actif ? "#EEF0E7" : "#A7AF98",
+        borderColor: actif ? participant.couleur : "#DCE1D2",
       }}
       className="shrink-0 rounded-full border flex items-center justify-center
                  text-[12px] font-semibold tracking-[0.02em]
                  transition-[background-color,color,border-color,transform] duration-200
-                 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1C1A17]
-                 focus-visible:ring-offset-2 focus-visible:ring-offset-[#F7F3E8]
+                 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1B231C]
+                 focus-visible:ring-offset-2 focus-visible:ring-offset-[#EEF0E7]
                  active:scale-90 motion-reduce:transition-none"
     >
       {initiales}
@@ -490,23 +493,23 @@ function Compteur({ valeur, onChange, compact = false }) {
   const t = compact ? "h-6 w-6" : "h-7 w-7";
   return (
     <span className={`flex shrink-0 items-center gap-0.5 rounded-full p-0.5 transition-colors
-                      ${inactif ? "bg-transparent" : "bg-[#F2EDE0]"}`}>
+                      ${inactif ? "bg-transparent" : "bg-[#ECEEE4]"}`}>
       <button onClick={() => onChange(-1)} disabled={inactif} aria-label="Retirer un exemplaire"
-        className={`${t} flex items-center justify-center rounded-full text-[#8B8578]
-                    hover:bg-white hover:text-[#1C1A17] disabled:text-[#D3CBB8]
+        className={`${t} flex items-center justify-center rounded-full text-[#7C8172]
+                    hover:bg-white hover:text-[#1B231C] disabled:text-[#C9D0BB]
                     disabled:hover:bg-transparent transition-colors`}>
         <Minus size={compact ? 12 : 13} strokeWidth={2.5} />
       </button>
       <span aria-live="polite"
         className={`min-w-[18px] text-center tabular-nums font-bold
                     ${compact ? "text-[12px]" : "text-[13px]"}
-                    ${inactif ? "text-[#B0A897]" : "text-[#1C1A17]"}`}
+                    ${inactif ? "text-[#A7AF98]" : "text-[#1B231C]"}`}
         style={{ fontFamily: "'Roboto Mono', monospace" }}>
         {valeur}
       </span>
       <button onClick={() => onChange(1)} aria-label="Ajouter un exemplaire"
-        className={`${t} flex items-center justify-center rounded-full text-[#8B8578]
-                    hover:bg-white hover:text-[#1C1A17] transition-colors`}>
+        className={`${t} flex items-center justify-center rounded-full text-[#7C8172]
+                    hover:bg-white hover:text-[#1B231C] transition-colors`}>
         <Plus size={compact ? 12 : 13} strokeWidth={2.5} />
       </button>
     </span>
@@ -603,8 +606,8 @@ function PastilleParts({ participant, actif, fraction, onBasculer, onFraction, t
       aria-label={etiquette}
       className={`flex h-[26px] w-[26px] items-center justify-center rounded-full text-[16px]
                   font-medium leading-none transition-colors touch-none select-none ${
-        pleine ? "text-[#8B8578] hover:bg-white hover:text-[#1C1A17]"
-               : "text-[#F7F3E8]/70 hover:bg-white/15 hover:text-[#F7F3E8]"}`}
+        pleine ? "text-[#7C8172] hover:bg-white hover:text-[#1B231C]"
+               : "text-[#EEF0E7]/70 hover:bg-white/15 hover:text-[#EEF0E7]"}`}
     >
       {symbole}
     </button>
@@ -618,14 +621,14 @@ function PastilleParts({ participant, actif, fraction, onBasculer, onFraction, t
         aria-label={participant.nom}
         style={{
           width: taille, height: taille,
-          background: actif ? participant.couleur : "#F7F3E8",
-          color: actif ? "#F7F3E8" : "#B0A897",
-          borderColor: actif ? participant.couleur : "#DDD5C4",
+          background: actif ? participant.couleur : "#EEF0E7",
+          color: actif ? "#EEF0E7" : "#A7AF98",
+          borderColor: actif ? participant.couleur : "#DCE1D2",
         }}
         className="rounded-full border flex items-center justify-center text-[12px] font-semibold
                    tracking-[0.02em] transition-[background-color,color,border-color,transform]
-                   duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1C1A17]
-                   focus-visible:ring-offset-2 focus-visible:ring-offset-[#F7F3E8]
+                   duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1B231C]
+                   focus-visible:ring-offset-2 focus-visible:ring-offset-[#EEF0E7]
                    active:scale-90 motion-reduce:transition-none"
       >
         {initiales}
@@ -633,12 +636,12 @@ function PastilleParts({ participant, actif, fraction, onBasculer, onFraction, t
 
       {actif ? (
         <span className={`flex items-center gap-px rounded-full transition-colors ${
-                pleine ? "bg-[#F2EDE0]" : "bg-[#1C1A17]"}`}>
+                pleine ? "bg-[#ECEEE4]" : "bg-[#1B231C]"}`}>
           {commande(-1, "−", `Moins pour ${participant.nom}`)}
           <span
             aria-label={`Part de ${participant.nom} : ${texteFraction(fraction)}`}
             className={`min-w-[20px] text-center text-[12px] font-bold leading-none ${
-              pleine ? "text-[#8B8578]" : "text-[#F7F3E8]"}`}
+              pleine ? "text-[#7C8172]" : "text-[#EEF0E7]"}`}
             style={{ fontFamily: "'Roboto Mono', monospace" }}
           >
             {nomFraction(fraction)}
@@ -1171,21 +1174,21 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
 
   if (!pret) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#F7F3E8]">
-        <Loader2 size={22} className="animate-spin text-[#B0A897]" />
+      <div className="flex min-h-screen items-center justify-center bg-[#EEF0E7]">
+        <Loader2 size={22} className="animate-spin text-[#A7AF98]" />
       </div>
     );
   }
 
   if (inviteFin) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-3 px-6 text-center bg-[#F7F3E8]"
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 px-6 text-center bg-[#EEF0E7]"
            style={{ fontFamily: "'Archivo', system-ui, sans-serif" }}>
-        <Check size={26} style={{ color: "#2E6F5E" }} />
+        <Check size={26} style={{ color: "#A97F2E" }} />
         <p className="text-[17px] font-bold">
           {inviteFin === "supprimee" ? "Addition supprimée" : "Addition clôturée"}
         </p>
-        <p className="max-w-[280px] text-[13.5px] leading-relaxed" style={{ color: "#8B8578" }}>
+        <p className="max-w-[280px] text-[13.5px] leading-relaxed" style={{ color: "#7C8172" }}>
           Tu peux fermer cette page.
         </p>
       </div>
@@ -1193,7 +1196,7 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
   }
 
   return (
-    <div className="relative grain min-h-screen bg-[#F7F3E8] text-[#1C1A17] antialiased"
+    <div className="relative grain min-h-screen bg-[#EEF0E7] text-[#1B231C] antialiased"
          style={{ fontFamily: "'Archivo', system-ui, sans-serif" }}>
       <style>{styles}</style>
 
@@ -1205,11 +1208,11 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
             <header className="pt-10 pb-8">
               <button onClick={onRetour}
                 className="mb-5 -ml-1 flex items-center gap-1 text-[13px] transition-colors"
-                style={{ color: "#8B8578" }}>
+                style={{ color: "#7C8172" }}>
                 <ChevronLeft size={16} /> Accueil
               </button>
               <h1 className="text-[34px] font-bold leading-[0.95] tracking-[-0.035em]">Mes additions</h1>
-              <p className="mt-2 text-[13px] text-[#8B8578]">
+              <p className="mt-2 text-[13px] text-[#7C8172]">
                 {historique.length === 0
                   ? "Rien pour l'instant."
                   : `${historique.length} ${historique.length > 1 ? "additions gardées" : "addition gardée"}`}
@@ -1219,22 +1222,22 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
             {lignes.length > 0 && (
               <button onClick={() => setEcran("saisie")}
                 className="monte mb-4 flex w-full items-center gap-3 rounded-[18px] border border-dashed
-                           border-[#C1362F] bg-[#FBEBE8] p-4 text-left">
-                <Receipt size={18} className="shrink-0 text-[#C1362F]" />
+                           border-[#1F4B3A] bg-[#E6EFEC] p-4 text-left">
+                <Receipt size={18} className="shrink-0 text-[#1F4B3A]" />
                 <span className="min-w-0 flex-1">
-                  <span className="block text-[14px] font-semibold text-[#C1362F]">Addition en cours</span>
-                  <span className="block text-[11.5px] text-[#C1362F]/70"
+                  <span className="block text-[14px] font-semibold text-[#1F4B3A]">Addition en cours</span>
+                  <span className="block text-[11.5px] text-[#1F4B3A]/70"
                         style={{ fontFamily: "'Roboto Mono', monospace" }}>
                     {nbArticles} articles · {fmt(calcul.total)} €
                   </span>
                 </span>
-                <ArrowRight size={16} className="shrink-0 text-[#C1362F]" />
+                <ArrowRight size={16} className="shrink-0 text-[#1F4B3A]" />
               </button>
             )}
 
             {historique.length === 0 ? (
-              <p className="rounded-[18px] border border-dashed border-[#DDD5C4] px-6 py-12 text-center
-                            text-[13.5px] leading-relaxed text-[#8B8578]">
+              <p className="rounded-[18px] border border-dashed border-[#DCE1D2] px-6 py-12 text-center
+                            text-[13.5px] leading-relaxed text-[#7C8172]">
                 Les additions terminées<br />apparaîtront ici.
               </p>
             ) : (
@@ -1242,13 +1245,13 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
                 {historique.map((h, i) => (
                   <li key={h.jeton}
                       className="monte flex items-center gap-3 rounded-[18px] bg-white p-4
-                                 shadow-[0_0_0_1px_#E9E2D2]"
+                                 shadow-[0_0_0_1px_#E1E5D6]"
                       style={{ animationDelay: `${i * 35}ms` }}>
                     <button onClick={() => rouvrir(h)} className="min-w-0 flex-1 text-left">
                       <span className="block truncate text-[15px] font-semibold tracking-[-0.01em]">
                         {h.titre || "Addition"}
                       </span>
-                      <span className="mt-0.5 block text-[11.5px] text-[#8B8578]"
+                      <span className="mt-0.5 block text-[11.5px] text-[#7C8172]"
                             style={{ fontFamily: "'Roboto Mono', monospace" }}>
                         {dateCourte(h.modifieLe)} · {h.nParticipants} pers. · {h.nLignes} art.
                       </span>
@@ -1259,7 +1262,7 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
                     </span>
                     <button onClick={() => supprimerHisto(h.jeton)}
                             aria-label={`Supprimer ${h.titre}`}
-                            className="shrink-0 text-[#C4BCA9] hover:text-[#C1362F] transition-colors">
+                            className="shrink-0 text-[#BAC2AB] hover:text-[#C1362F] transition-colors">
                       <Trash2 size={15} />
                     </button>
                   </li>
@@ -1276,14 +1279,14 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
               <div className="mb-5 flex items-center justify-between">
                 {modeInvite ? <span /> : (
                   <button onClick={() => { allerVersAccueil(); setEcran("historique"); }}
-                    className="-ml-1 flex items-center gap-1 text-[13px] text-[#8B8578]
-                               hover:text-[#1C1A17] transition-colors">
+                    className="-ml-1 flex items-center gap-1 text-[13px] text-[#7C8172]
+                               hover:text-[#1B231C] transition-colors">
                     <ChevronLeft size={16} /> Mes additions
                   </button>
                 )}
                 <span className="flex items-center gap-3">
                   <span className={`flex items-center gap-1.5 text-[11px] transition-colors ${
-                          sauvegarde === "erreur" ? "text-[#C1362F]" : "text-[#B0A897]"}`}
+                          sauvegarde === "erreur" ? "text-[#C1362F]" : "text-[#A7AF98]"}`}
                         style={{ fontFamily: "'Roboto Mono', monospace" }}>
                     {sauvegarde === "cours" ? <Loader2 size={12} className="animate-spin" />
                       : sauvegarde === "erreur" ? <AlertCircle size={12} />
@@ -1294,7 +1297,7 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
                   </span>
                   {(lignes.length > 0 || participants.length > 0) && (
                     <button onClick={() => setConfirmation("abandon")}
-                      className="text-[11px] font-medium text-[#B0A897] hover:text-[#C1362F] transition-colors">
+                      className="text-[11px] font-medium text-[#A7AF98] hover:text-[#C1362F] transition-colors">
                       Abandonner
                     </button>
                   )}
@@ -1307,11 +1310,11 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
                   placeholder="L'addition"
                   aria-label="Nom de l'addition"
                   className="min-w-0 flex-1 rounded-md bg-transparent -ml-1 px-1 text-[34px] font-bold
-                             leading-[0.95] tracking-[-0.035em] placeholder-[#1C1A17]
-                             hover:bg-[#F0EADB] focus:bg-[#F0EADB] focus:outline-none transition-colors"
+                             leading-[0.95] tracking-[-0.035em] placeholder-[#1B231C]
+                             hover:bg-[#E8EBE0] focus:bg-[#E8EBE0] focus:outline-none transition-colors"
                 />
                 {lignes.length > 0 && (
-                  <span className="shrink-0 pb-1 font-bold text-[13px] tabular-nums text-[#8B8578]"
+                  <span className="shrink-0 pb-1 font-bold text-[13px] tabular-nums text-[#7C8172]"
                         style={{ fontFamily: "'Roboto Mono', monospace" }}>
                     {nbArticles} {nbArticles > 1 ? "ART." : "ART."}
                   </span>
@@ -1323,17 +1326,17 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
             {jeton && (
               <button onClick={partagerLeLien}
                 className="monte mb-6 flex w-full items-center gap-2.5 rounded-[14px] bg-white p-3 text-left
-                           transition-colors hover:bg-[#F5F1E5]"
-                style={{ boxShadow: "0 0 0 1px #E9E2D2" }}>
+                           transition-colors hover:bg-[#EFF1E9]"
+                style={{ boxShadow: "0 0 0 1px #E1E5D6" }}>
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
-                      style={{ background: "#F2EDE0", color: "#8B8578" }}>
+                      style={{ background: "#ECEEE4", color: "#7C8172" }}>
                   <Share2 size={14} />
                 </span>
                 <span className="min-w-0 flex-1 truncate text-[12px]"
-                      style={{ fontFamily: "'Roboto Mono', monospace", color: "#8B8578" }}>
+                      style={{ fontFamily: "'Roboto Mono', monospace", color: "#7C8172" }}>
                   {location.origin.replace(/^https?:\/\//, "")}/s/{jeton}
                 </span>
-                <span className="shrink-0 text-[12px] font-semibold" style={{ color: "#1C1A17" }}>
+                <span className="shrink-0 text-[12px] font-semibold" style={{ color: "#1B231C" }}>
                   {partageLienEtat === "copie" ? "Copié !" : "Partager"}
                 </span>
               </button>
@@ -1342,45 +1345,45 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
             {/* convives */}
             <section className="mb-9">
               <div className="mb-3.5 flex items-center gap-3">
-                <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#8B8578]"
+                <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#7C8172]"
                       style={{ fontFamily: "'Roboto Mono', monospace" }}>À table</span>
-                <span className="h-px flex-1 bg-[#DDD5C4]" />
+                <span className="h-px flex-1 bg-[#DCE1D2]" />
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
                 {participants.map((p) => (
                   <span key={p.id}
                         className="flex items-center gap-2 rounded-full bg-white py-1 pl-1 pr-2.5
-                                   shadow-[0_1px_0_#E9E2D2,0_0_0_1px_#E9E2D2]">
+                                   shadow-[0_1px_0_#E1E5D6,0_0_0_1px_#E1E5D6]">
                     <span className="flex h-6 w-6 items-center justify-center rounded-full
-                                     text-[10px] font-bold text-[#F7F3E8]"
+                                     text-[10px] font-bold text-[#EEF0E7]"
                           style={{ background: p.couleur }}>
                       {p.nom.slice(0, 2).toUpperCase()}
                     </span>
                     <span className="text-[13.5px] font-medium">
-                      {p.nom}{p.id === moi && <span style={{ color: "#8B8578" }}> (vous)</span>}
+                      {p.nom}{p.id === moi && <span style={{ color: "#7C8172" }}> (vous)</span>}
                     </span>
                     <button onClick={() => retirerParticipant(p.id)} aria-label={`Retirer ${p.nom}`}
-                            className="text-[#C4BCA9] hover:text-[#C1362F] transition-colors">
+                            className="text-[#BAC2AB] hover:text-[#C1362F] transition-colors">
                       <X size={13} strokeWidth={2.5} />
                     </button>
                   </span>
                 ))}
 
                 <span className="flex items-center gap-1 rounded-full border border-dashed
-                                 border-[#CDC4B0] py-1 pl-3 pr-1">
+                                 border-[#C2C9B4] py-1 pl-3 pr-1">
                   <input
                     value={nouveauNom}
                     onChange={(e) => setNouveauNom(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && ajouterNom(nouveauNom)}
                     placeholder="Prénom"
                     enterKeyHint="done"
-                    className="w-[68px] bg-transparent text-[13.5px] placeholder-[#B0A897] focus:outline-none"
+                    className="w-[68px] bg-transparent text-[13.5px] placeholder-[#A7AF98] focus:outline-none"
                   />
                   <button onClick={() => ajouterNom(nouveauNom)} disabled={!nouveauNom.trim()}
                           aria-label="Ajouter cette personne"
-                          className="flex h-6 w-6 items-center justify-center rounded-full bg-[#1C1A17]
-                                     text-[#F7F3E8] disabled:bg-[#E0D8C7] disabled:text-[#B0A897] transition-colors">
+                          className="flex h-6 w-6 items-center justify-center rounded-full bg-[#1B231C]
+                                     text-[#EEF0E7] disabled:bg-[#D7DCCB] disabled:text-[#A7AF98] transition-colors">
                     <Plus size={13} strokeWidth={2.5} />
                   </button>
                 </span>
@@ -1388,15 +1391,15 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
 
               {suggestions.length > 0 && (
                 <div className="mt-3">
-                  <span className="mb-2 block text-[10px] font-bold uppercase tracking-[0.14em] text-[#B0A897]"
+                  <span className="mb-2 block text-[10px] font-bold uppercase tracking-[0.14em] text-[#A7AF98]"
                         style={{ fontFamily: "'Roboto Mono', monospace" }}>
                     Déjà venus
                   </span>
                   <div className="flex flex-wrap gap-1.5">
                     {suggestions.map((n) => (
                       <button key={n} onClick={() => ajouterNom(n)}
-                        className="rounded-full border border-[#E0D8C7] px-3 py-1 text-[12.5px] text-[#8B8578]
-                                   hover:border-[#1C1A17] hover:text-[#1C1A17] transition-colors">
+                        className="rounded-full border border-[#D7DCCB] px-3 py-1 text-[12.5px] text-[#7C8172]
+                                   hover:border-[#1B231C] hover:text-[#1B231C] transition-colors">
                         + {n}
                       </button>
                     ))}
@@ -1409,16 +1412,16 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
             {participants.length > 0 && (
               <section className="mb-9">
                 <div className="mb-3.5 flex items-center gap-3">
-                  <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#8B8578]"
+                  <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#7C8172]"
                         style={{ fontFamily: "'Roboto Mono', monospace" }}>
                     Total du ticket
                   </span>
-                  <span className="h-px flex-1 bg-[#DDD5C4]" />
+                  <span className="h-px flex-1 bg-[#DCE1D2]" />
                 </div>
                 <div className="rounded-[18px] p-4"
-                     style={{ background: "#fff", boxShadow: "0 0 0 1px #E9E2D2" }}>
+                     style={{ background: "#fff", boxShadow: "0 0 0 1px #E1E5D6" }}>
                   <div className="flex items-baseline justify-between gap-3">
-                    <span className="text-[14px] text-[#8B8578]">
+                    <span className="text-[14px] text-[#7C8172]">
                       Montant inscrit sur l'addition
                     </span>
                     <div className="flex shrink-0 items-baseline gap-1">
@@ -1427,21 +1430,21 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
                         onChange={changerTotalAttendu}
                         aria-label="Total inscrit sur l'addition"
                         className="w-[78px] rounded-md bg-transparent px-1.5 py-1 text-right text-[17px]
-                                   font-bold tabular-nums hover:bg-[#F5F1E5] focus:bg-[#F5F1E5]
+                                   font-bold tabular-nums hover:bg-[#EFF1E9] focus:bg-[#EFF1E9]
                                    focus:outline-none transition-colors"
                         style={{ fontFamily: "'Roboto Mono', monospace" }}
                       />
-                      <span className="text-[13px] font-medium text-[#8B8578]">€</span>
+                      <span className="text-[13px] font-medium text-[#7C8172]">€</span>
                     </div>
                   </div>
 
                   {(etat.totalAttendu ?? 0) > 0 && lignes.length > 0 && (
-                    <div className="monte mt-3 border-t border-dashed border-[#E5DECD] pt-3">
+                    <div className="monte mt-3 border-t border-dashed border-[#DCE1D1] pt-3">
                       {(() => {
                         const ecart = calcul.total - etat.totalAttendu;
                         if (ecart === 0)
                           return (
-                            <p className="flex items-center gap-1.5 text-[12px] tabular-nums text-[#2E6F5E]"
+                            <p className="flex items-center gap-1.5 text-[12px] tabular-nums text-[#A97F2E]"
                                style={{ fontFamily: "'Roboto Mono', monospace" }}>
                               <Check size={13} strokeWidth={3} />
                               Tout est saisi — {fmt(calcul.total)} €
@@ -1466,21 +1469,21 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
 
             {/* nouvelle ligne */}
             {participants.length > 0 && (
-              <section className="mb-9 rounded-[18px] bg-white p-4 shadow-[0_2px_0_#E9E2D2,0_0_0_1px_#E9E2D2]">
-                <div className="flex items-baseline gap-3 border-b border-dashed border-[#E0D8C7] pb-3.5">
+              <section className="mb-9 rounded-[18px] bg-white p-4 shadow-[0_2px_0_#E1E5D6,0_0_0_1px_#E1E5D6]">
+                <div className="flex items-baseline gap-3 border-b border-dashed border-[#D7DCCB] pb-3.5">
                   <input ref={refLibelle} value={libelle} onChange={(e) => setLibelle(e.target.value)}
                     placeholder="Bouteille de vin"
                     className="min-w-0 flex-1 bg-transparent text-[16px] font-medium
-                               placeholder-[#B0A897] focus:outline-none" />
+                               placeholder-[#A7AF98] focus:outline-none" />
                   <div className="flex items-baseline gap-1">
                     <input value={montant}
                       onChange={(e) => setMontant(e.target.value.replace(",", "."))}
                       onKeyDown={(e) => e.key === "Enter" && ajouterLigne()}
                       inputMode="decimal" placeholder="0,00" aria-label="Montant"
                       className="w-[70px] bg-transparent text-right text-[16px] font-bold tabular-nums
-                                 placeholder-[#B0A897] focus:outline-none"
+                                 placeholder-[#A7AF98] focus:outline-none"
                       style={{ fontFamily: "'Roboto Mono', monospace" }} />
-                    <span className="text-[13px] font-medium text-[#8B8578]">€</span>
+                    <span className="text-[13px] font-medium text-[#7C8172]">€</span>
                   </div>
                 </div>
 
@@ -1488,7 +1491,7 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
                   <Compteur valeur={quantite}
                             onChange={(d) => setQuantite((q) => Math.max(1, Math.min(99, q + d)))} />
                   {quantite > 1 && enCentimes(montant) > 0 && (
-                    <span className="text-[12px] font-bold tabular-nums text-[#8B8578]"
+                    <span className="text-[12px] font-bold tabular-nums text-[#7C8172]"
                           style={{ fontFamily: "'Roboto Mono', monospace" }}>
                       = {fmt(enCentimes(montant) * quantite)} €
                     </span>
@@ -1504,7 +1507,7 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
                   <button onClick={() => setSelection(
                             selection.length === participants.length ? [] : participants.map((p) => p.id))}
                     className="ml-auto shrink-0 rounded-full px-3 py-1.5 text-[11px] font-bold uppercase
-                               tracking-[0.08em] text-[#8B8578] hover:bg-[#F2EDE0] hover:text-[#1C1A17]
+                               tracking-[0.08em] text-[#7C8172] hover:bg-[#ECEEE4] hover:text-[#1B231C]
                                transition-colors"
                     style={{ fontFamily: "'Roboto Mono', monospace" }}>
                     {selection.length === participants.length ? "Personne" : "Tous"}
@@ -1512,17 +1515,17 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
                 </div>
 
                 <button onClick={ajouterLigne} disabled={enCentimes(montant) <= 0}
-                  className="mt-4 flex w-full items-center justify-center gap-1.5 rounded-[13px] bg-[#1C1A17]
-                             py-3.5 text-[14px] font-semibold text-[#F7F3E8] tracking-[-0.01em]
-                             disabled:bg-[#EFE9DA] disabled:text-[#B0A897] transition-colors">
+                  className="mt-4 flex w-full items-center justify-center gap-1.5 rounded-[13px] bg-[#1B231C]
+                             py-3.5 text-[14px] font-semibold text-[#EEF0E7] tracking-[-0.01em]
+                             disabled:bg-[#E7EADF] disabled:text-[#A7AF98] transition-colors">
                   <Plus size={16} strokeWidth={2.5} /> Ajouter à l'addition
                 </button>
               </section>
             )}
 
             {participants.length === 0 && (
-              <p className="rounded-[18px] border border-dashed border-[#DDD5C4] px-6 py-10 text-center
-                            text-[13.5px] leading-relaxed text-[#8B8578]">
+              <p className="rounded-[18px] border border-dashed border-[#DCE1D2] px-6 py-10 text-center
+                            text-[13.5px] leading-relaxed text-[#7C8172]">
                 Ajoutez d'abord qui est à table.
               </p>
             )}
@@ -1531,9 +1534,9 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
             {lignes.length > 0 && (
               <section>
                 <div className="mb-3.5 flex items-center gap-3">
-                  <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#8B8578]"
+                  <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#7C8172]"
                         style={{ fontFamily: "'Roboto Mono', monospace" }}>La note</span>
-                  <span className="h-px flex-1 bg-[#DDD5C4]" />
+                  <span className="h-px flex-1 bg-[#DCE1D2]" />
                   {lignes.length > 2 && (
                     <button
                       onClick={() => setTri((t) =>
@@ -1543,8 +1546,8 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
                       className="flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[10px]
                                  font-bold uppercase tracking-[0.1em] transition-colors"
                       style={{
-                        color: tri === "saisie" ? "#B0A897" : "#1C1A17",
-                        background: tri === "saisie" ? "transparent" : "#F2EDE0",
+                        color: tri === "saisie" ? "#A7AF98" : "#1B231C",
+                        background: tri === "saisie" ? "transparent" : "#ECEEE4",
                       }}
                     >
                       <ArrowUpDown size={11} strokeWidth={2.5} />
@@ -1553,7 +1556,7 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
                   )}
                 </div>
 
-                <div className="overflow-hidden rounded-t-[18px] bg-white shadow-[0_0_0_1px_#E9E2D2]">
+                <div className="overflow-hidden rounded-t-[18px] bg-white shadow-[0_0_0_1px_#E1E5D6]">
                   {lignesAffichees.map((l, i) => {
                     const orphelin = l.participantIds.length === 0;
                     const aDesParts = !!l.reglee;
@@ -1565,23 +1568,23 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
                     const incomplete = orphelin || ecartL !== 0;
                     return (
                       <div key={l.id}
-                           className={`monte px-4 py-4 ${i > 0 ? "border-t border-dashed border-[#E5DECD]" : ""}`}
+                           className={`monte px-4 py-4 ${i > 0 ? "border-t border-dashed border-[#DCE1D1]" : ""}`}
                            style={incomplete ? { background: "#FDF6F4" } : undefined}>
                         <div className="flex items-baseline gap-2">
                           <input value={l.libelle}
                             onChange={(e) => modifierLigne(l.id, "libelle", e.target.value)}
                             aria-label="Nom de l'article"
                             className="min-w-0 flex-1 rounded-md bg-transparent px-1.5 py-1 -ml-1.5
-                                       text-[15.5px] font-medium hover:bg-[#F5F1E5] focus:bg-[#F5F1E5]
+                                       text-[15.5px] font-medium hover:bg-[#EFF1E9] focus:bg-[#EFF1E9]
                                        focus:outline-none transition-colors" />
                           <div className="flex shrink-0 items-baseline gap-1">
                             <ChampMontant centimes={l.montant}
                               onChange={(c) => modifierLigne(l.id, "montant", c)} aria-label="Montant"
                               className="w-[68px] rounded-md bg-transparent px-1.5 py-1 text-right
-                                         text-[15.5px] font-bold tabular-nums hover:bg-[#F5F1E5]
-                                         focus:bg-[#F5F1E5] focus:outline-none transition-colors"
+                                         text-[15.5px] font-bold tabular-nums hover:bg-[#EFF1E9]
+                                         focus:bg-[#EFF1E9] focus:outline-none transition-colors"
                               style={{ fontFamily: "'Roboto Mono', monospace" }} />
-                            <span className="text-[12px] font-medium text-[#8B8578]">€</span>
+                            <span className="text-[12px] font-medium text-[#7C8172]">€</span>
                           </div>
                         </div>
 
@@ -1590,13 +1593,13 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
                                     onChange={(d) => changerQuantite(l.id, d)} />
                           <button onClick={() => dupliquerLigne(l.id)} title="Dupliquer"
                             aria-label={`Dupliquer ${l.libelle}`}
-                            className="flex h-7 w-7 items-center justify-center rounded-full text-[#C4BCA9]
-                                       hover:bg-[#F2EDE0] hover:text-[#1C1A17] transition-colors">
+                            className="flex h-7 w-7 items-center justify-center rounded-full text-[#BAC2AB]
+                                       hover:bg-[#ECEEE4] hover:text-[#1B231C] transition-colors">
                             <Copy size={14} />
                           </button>
                           <button onClick={() => supprimerLigne(l.id)} title="Supprimer"
                             aria-label={`Supprimer ${l.libelle}`}
-                            className="flex h-7 w-7 items-center justify-center rounded-full text-[#C4BCA9]
+                            className="flex h-7 w-7 items-center justify-center rounded-full text-[#BAC2AB]
                                        hover:bg-[#FBEBE8] hover:text-[#C1362F] transition-colors">
                             <Trash2 size={14} />
                           </button>
@@ -1612,8 +1615,8 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
                           ))}
                           <button onClick={() => tousOuAucun(l.id, l.participantIds.length !== participants.length)}
                             className="ml-auto shrink-0 rounded-full px-2 py-1 text-[10px] font-bold uppercase
-                                       tracking-[0.08em] text-[#B0A897] hover:bg-[#F2EDE0]
-                                       hover:text-[#1C1A17] transition-colors"
+                                       tracking-[0.08em] text-[#A7AF98] hover:bg-[#ECEEE4]
+                                       hover:text-[#1B231C] transition-colors"
                             style={{ fontFamily: "'Roboto Mono', monospace" }}>
                             {l.participantIds.length === participants.length ? "Personne" : "Tous"}
                           </button>
@@ -1646,16 +1649,16 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
                           return (
                             <>
                               {detail.length > 0 && (
-                                <p className="mt-2 text-[11.5px] tabular-nums text-[#8B8578]"
+                                <p className="mt-2 text-[11.5px] tabular-nums text-[#7C8172]"
                                    style={{ fontFamily: "'Roboto Mono', monospace" }}>
                                   {detail.join("  ·  ")}
                                 </p>
                               )}
                               {inegal && (
                                 <div className={`mt-3 flex items-center gap-2 border-t pt-2.5 ${
-                                        ecart === 0 ? "border-[#E5DECD]" : "border-[#F0D5CF]"}`}>
+                                        ecart === 0 ? "border-[#DCE1D1]" : "border-[#F0D5CF]"}`}>
                                   {ecart === 0 ? (
-                                    <span className="flex items-center gap-1.5 text-[11.5px] tabular-nums text-[#2E6F5E]"
+                                    <span className="flex items-center gap-1.5 text-[11.5px] tabular-nums text-[#A97F2E]"
                                           style={{ fontFamily: "'Roboto Mono', monospace" }}>
                                       <Check size={12} strokeWidth={3} />
                                       {texteFraction(somme)} / {cible} réparti
@@ -1678,8 +1681,8 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
                                       </button>
                                       <button onClick={() => equilibrer(l.id)}
                                         className="ml-auto shrink-0 rounded-[9px] px-2 py-1.5 text-[10px]
-                                                   font-bold uppercase tracking-[0.08em] text-[#B0A897]
-                                                   hover:text-[#1C1A17] transition-colors"
+                                                   font-bold uppercase tracking-[0.08em] text-[#A7AF98]
+                                                   hover:text-[#1B231C] transition-colors"
                                         style={{ fontFamily: "'Roboto Mono', monospace" }}>
                                         Égaliser
                                       </button>
@@ -1694,9 +1697,9 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
                     );
                   })}
                 </div>
-                <div className="dents h-[10px] bg-white shadow-[0_0_0_1px_#E9E2D2]" />
+                <div className="dents h-[10px] bg-white shadow-[0_0_0_1px_#E1E5D6]" />
 
-                <div className="mt-7 rounded-[18px] bg-white p-4 shadow-[0_0_0_1px_#E9E2D2]">
+                <div className="mt-7 rounded-[18px] bg-white p-4 shadow-[0_0_0_1px_#E1E5D6]">
                   <div className="flex items-baseline justify-between">
                     <span className="text-[15px] font-medium">Service</span>
                     <div className="flex items-baseline gap-1">
@@ -1704,22 +1707,22 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
                         onChange={changerService}
                         aria-label="Montant du service"
                         className="w-[68px] rounded-md bg-transparent px-1.5 py-1 text-right text-[15px]
-                                   font-bold tabular-nums hover:bg-[#F5F1E5] focus:bg-[#F5F1E5]
+                                   font-bold tabular-nums hover:bg-[#EFF1E9] focus:bg-[#EFF1E9]
                                    focus:outline-none transition-colors"
                         style={{ fontFamily: "'Roboto Mono', monospace" }} />
-                      <span className="text-[12px] font-medium text-[#8B8578]">€</span>
+                      <span className="text-[12px] font-medium text-[#7C8172]">€</span>
                     </div>
                   </div>
 
                   {extras.service > 0 && (
-                    <div className="monte mt-3.5 flex gap-1.5 rounded-[11px] bg-[#F2EDE0] p-1">
+                    <div className="monte mt-3.5 flex gap-1.5 rounded-[11px] bg-[#ECEEE4] p-1">
                       {[["prorata", "Au prorata"], ["egal", "Parts égales"]].map(([val, label]) => (
                         <button key={val}
                           onClick={() => changerModeService(val)}
                           className={`flex-1 rounded-[8px] py-2 text-[12.5px] font-semibold transition-colors ${
                             extras.mode === val
-                              ? "bg-white text-[#1C1A17] shadow-[0_1px_2px_rgba(28,26,23,.1)]"
-                              : "text-[#8B8578] hover:text-[#1C1A17]"}`}>
+                              ? "bg-white text-[#1B231C] shadow-[0_1px_2px_rgba(28,26,23,.1)]"
+                              : "text-[#7C8172] hover:text-[#1B231C]"}`}>
                           {label}
                         </button>
                       ))}
@@ -1736,8 +1739,8 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
           <section>
             <header className="pt-10 pb-8">
               <button onClick={() => setEcran("saisie")}
-                className="mb-5 -ml-1 flex items-center gap-1 text-[13px] text-[#8B8578]
-                           hover:text-[#1C1A17] transition-colors">
+                className="mb-5 -ml-1 flex items-center gap-1 text-[13px] text-[#7C8172]
+                           hover:text-[#1B231C] transition-colors">
                 <ChevronLeft size={16} /> Modifier l'addition
               </button>
               <h1 className="text-[34px] font-bold leading-[0.95] tracking-[-0.035em]">
@@ -1750,7 +1753,7 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
                 const ouverte = deplie.includes(r.id);
                 return (
                   <div key={r.id}
-                       className="monte relative overflow-hidden rounded-[18px] bg-white shadow-[0_0_0_1px_#E9E2D2]"
+                       className="monte relative overflow-hidden rounded-[18px] bg-white shadow-[0_0_0_1px_#E1E5D6]"
                        style={{ animationDelay: `${i * 45}ms` }}>
                     <span className="absolute inset-y-0 left-0 w-[3px]" style={{ background: r.couleur }} />
                     <button
@@ -1758,9 +1761,9 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
                         d.includes(r.id) ? d.filter((x) => x !== r.id) : [...d, r.id])}
                       aria-expanded={ouverte}
                       className="flex w-full items-center gap-3 p-4 pl-[22px] text-left
-                                 hover:bg-[#FCFAF5] transition-colors">
+                                 hover:bg-[#FFFFFF] transition-colors">
                       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full
-                                       text-[12px] font-bold text-[#F7F3E8]"
+                                       text-[12px] font-bold text-[#EEF0E7]"
                             style={{ background: r.couleur }}>
                         {r.nom.slice(0, 2).toUpperCase()}
                       </span>
@@ -1768,7 +1771,7 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
                         <span className="block truncate text-[16px] font-semibold tracking-[-0.01em]">
                           {r.nom}
                         </span>
-                        <span className="mt-0.5 block text-[11.5px] text-[#8B8578]"
+                        <span className="mt-0.5 block text-[11.5px] text-[#7C8172]"
                               style={{ fontFamily: "'Roboto Mono', monospace" }}>
                           {r.articles.length === 0 ? "rien pris"
                             : `${r.articles.length} ${r.articles.length > 1 ? "articles" : "article"}`}
@@ -1777,27 +1780,27 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
                       <span className="text-[22px] font-bold tabular-nums tracking-[-0.02em]"
                             style={{ fontFamily: "'Roboto Mono', monospace" }}>
                         {fmt(r.total)}
-                        <span className="ml-1 text-[13px] font-medium text-[#8B8578]">€</span>
+                        <span className="ml-1 text-[13px] font-medium text-[#7C8172]">€</span>
                       </span>
                       <ChevronDown size={16}
-                        className={`shrink-0 text-[#B0A897] transition-transform duration-200
+                        className={`shrink-0 text-[#A7AF98] transition-transform duration-200
                                     motion-reduce:transition-none ${ouverte ? "rotate-180" : ""}`} />
                     </button>
 
                     {ouverte && (
-                      <div className="border-t border-dashed border-[#E5DECD] px-4 pb-4 pl-[22px] pt-3"
+                      <div className="border-t border-dashed border-[#DCE1D1] px-4 pb-4 pl-[22px] pt-3"
                            style={{ fontFamily: "'Roboto Mono', monospace" }}>
                         {r.articles.length === 0 ? (
-                          <p className="text-[12px] text-[#8B8578]">Aucun article à son nom.</p>
+                          <p className="text-[12px] text-[#7C8172]">Aucun article à son nom.</p>
                         ) : (
                           <ul className="space-y-1.5">
                             {r.articles.map((a) => (
                               <li key={a.id} className="flex items-baseline gap-2 text-[12px]">
-                                <span className="min-w-0 flex-1 truncate text-[#1C1A17]">
-                                  {a.quantite > 1 && <span className="text-[#8B8578]">{a.quantite}× </span>}
+                                <span className="min-w-0 flex-1 truncate text-[#1B231C]">
+                                  {a.quantite > 1 && <span className="text-[#7C8172]">{a.quantite}× </span>}
                                   {a.libelle}
                                   {a.partage > 1 && (
-                                    <span className="text-[#8B8578]">
+                                    <span className="text-[#7C8172]">
                                       {" "}
                                       {a.fraction && a.fraction[0] !== a.fraction[1]
                                         ? `${nomFraction(a.fraction)}/${a.quantite}`
@@ -1812,12 +1815,12 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
                         )}
                         {r.service > 0 && (
                           <div className="mt-2.5 flex items-baseline justify-between border-t border-dashed
-                                          border-[#E5DECD] pt-2.5 text-[12px] text-[#8B8578]">
+                                          border-[#DCE1D1] pt-2.5 text-[12px] text-[#7C8172]">
                             <span>Service</span>
                             <span className="tabular-nums font-medium">{fmt(r.service)}</span>
                           </div>
                         )}
-                        <div className="mt-2 flex items-baseline justify-between border-t border-[#E5DECD]
+                        <div className="mt-2 flex items-baseline justify-between border-t border-[#DCE1D1]
                                         pt-2 text-[12.5px] font-bold">
                           <span>Total</span>
                           <span className="tabular-nums">{fmt(r.total)} €</span>
@@ -1831,24 +1834,24 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
 
             <button onClick={() => setDeplie((d) =>
                       d.length === participants.length ? [] : participants.map((p) => p.id))}
-              className="mt-3.5 w-full rounded-[12px] border border-dashed border-[#CDC4B0] py-2.5
-                         text-[11px] font-bold uppercase tracking-[0.12em] text-[#8B8578]
-                         hover:bg-white hover:text-[#1C1A17] transition-colors"
+              className="mt-3.5 w-full rounded-[12px] border border-dashed border-[#C2C9B4] py-2.5
+                         text-[11px] font-bold uppercase tracking-[0.12em] text-[#7C8172]
+                         hover:bg-white hover:text-[#1B231C] transition-colors"
               style={{ fontFamily: "'Roboto Mono', monospace" }}>
               {deplie.length === participants.length ? "Tout replier" : "Tout déplier"}
             </button>
 
-            <div className="mt-7 rounded-[18px] border border-dashed border-[#CDC4B0] p-4"
+            <div className="mt-7 rounded-[18px] border border-dashed border-[#C2C9B4] p-4"
                  style={{ fontFamily: "'Roboto Mono', monospace" }}>
-              <div className="flex justify-between text-[12.5px] tabular-nums text-[#8B8578]">
+              <div className="flex justify-between text-[12.5px] tabular-nums text-[#7C8172]">
                 <span>Articles</span><span>{fmt(calcul.totalLignes)} €</span>
               </div>
               {calcul.service > 0 && (
-                <div className="mt-1.5 flex justify-between text-[12.5px] tabular-nums text-[#8B8578]">
+                <div className="mt-1.5 flex justify-between text-[12.5px] tabular-nums text-[#7C8172]">
                   <span>Service</span><span>{fmt(calcul.service)} €</span>
                 </div>
               )}
-              <div className="mt-3 flex justify-between border-t border-dashed border-[#DDD5C4] pt-3
+              <div className="mt-3 flex justify-between border-t border-dashed border-[#DCE1D2] pt-3
                               text-[15px] font-bold tabular-nums">
                 <span>Total</span><span>{fmt(calcul.total)} €</span>
               </div>
@@ -1866,36 +1869,36 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
               {!image ? (
                 <button onClick={exporter} disabled={exportEtat === "cours"}
                   className="flex w-full items-center justify-center gap-2 rounded-[14px] bg-white py-3.5
-                             text-[14px] font-semibold shadow-[0_0_0_1px_#E9E2D2]
-                             hover:bg-[#FCFAF5] disabled:text-[#B0A897] transition-colors">
+                             text-[14px] font-semibold shadow-[0_0_0_1px_#E1E5D6]
+                             hover:bg-[#FFFFFF] disabled:text-[#A7AF98] transition-colors">
                   {exportEtat === "cours" ? <Loader2 size={16} className="animate-spin" />
                     : exportEtat === "erreur" ? <AlertCircle size={16} className="text-[#C1362F]" />
                     : <ImageIcon size={16} />}
                   {exportEtat === "erreur" ? "Génération impossible" : "Créer l'image du ticket"}
                 </button>
               ) : (
-                <div className="monte rounded-[18px] bg-white p-3 shadow-[0_0_0_1px_#E9E2D2]">
+                <div className="monte rounded-[18px] bg-white p-3 shadow-[0_0_0_1px_#E1E5D6]">
                   <img src={image} alt="Ticket de l'addition"
-                       className="w-full rounded-[10px] shadow-[0_0_0_1px_#E9E2D2]" />
-                  <p className="mt-2.5 px-1 text-center text-[11.5px] leading-relaxed text-[#8B8578]">
+                       className="w-full rounded-[10px] shadow-[0_0_0_1px_#E1E5D6]" />
+                  <p className="mt-2.5 px-1 text-center text-[11.5px] leading-relaxed text-[#7C8172]">
                     Appui long sur l'image pour l'enregistrer ou la partager.
                   </p>
                   <div className="mt-2.5 flex gap-2">
                     <button onClick={partager}
-                      className="flex flex-1 items-center justify-center gap-1.5 rounded-[11px] bg-[#1C1A17]
-                                 py-2.5 text-[12.5px] font-semibold text-[#F7F3E8] transition-colors">
+                      className="flex flex-1 items-center justify-center gap-1.5 rounded-[11px] bg-[#1B231C]
+                                 py-2.5 text-[12.5px] font-semibold text-[#EEF0E7] transition-colors">
                       <Share2 size={14} /> Partager
                     </button>
                     <button onClick={telecharger}
-                      className="flex items-center justify-center gap-1.5 rounded-[11px] border border-[#E0D8C7]
-                                 px-3.5 py-2.5 text-[12.5px] font-semibold text-[#8B8578]
-                                 hover:text-[#1C1A17] transition-colors">
-                      {partageEtat === "telecharge" ? <Check size={14} className="text-[#2E6F5E]" />
+                      className="flex items-center justify-center gap-1.5 rounded-[11px] border border-[#D7DCCB]
+                                 px-3.5 py-2.5 text-[12.5px] font-semibold text-[#7C8172]
+                                 hover:text-[#1B231C] transition-colors">
+                      {partageEtat === "telecharge" ? <Check size={14} className="text-[#A97F2E]" />
                         : <Download size={14} />}
                     </button>
                     <button onClick={() => setImage(null)}
-                      className="rounded-[11px] border border-[#E0D8C7] px-3.5 py-2.5 text-[12.5px]
-                                 font-semibold text-[#8B8578] hover:text-[#1C1A17] transition-colors">
+                      className="rounded-[11px] border border-[#D7DCCB] px-3.5 py-2.5 text-[12.5px]
+                                 font-semibold text-[#7C8172] hover:text-[#1B231C] transition-colors">
                       Fermer
                     </button>
                   </div>
@@ -1909,9 +1912,9 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
               )}
 
               <button onClick={cloturer}
-                className="w-full rounded-[14px] border border-dashed border-[#CDC4B0] py-3.5
-                           text-[13px] font-semibold text-[#8B8578]
-                           hover:border-[#1C1A17] hover:text-[#1C1A17] transition-colors">
+                className="w-full rounded-[14px] border border-dashed border-[#C2C9B4] py-3.5
+                           text-[13px] font-semibold text-[#7C8172]
+                           hover:border-[#1B231C] hover:text-[#1B231C] transition-colors">
                 Terminer et ranger dans l'historique
               </button>
             </div>
@@ -1921,11 +1924,11 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
 
       {/* barre fixe */}
       {ecran === "historique" && (
-        <div className="fixed inset-x-0 bottom-0 z-10 border-t border-[#E5DECD] bg-[#F7F3E8]/92 backdrop-blur-md">
+        <div className="fixed inset-x-0 bottom-0 z-10 border-t border-[#DCE1D1] bg-[#EEF0E7]/92 backdrop-blur-md">
           <div className="mx-auto max-w-[430px] px-5 pb-6 pt-4">
             <button onClick={nouvelleAddition}
-              className="flex w-full items-center justify-center gap-2 rounded-[14px] bg-[#1C1A17] px-5 py-4
-                         text-[15px] font-semibold text-[#F7F3E8] tracking-[-0.01em]">
+              className="flex w-full items-center justify-center gap-2 rounded-[14px] bg-[#1B231C] px-5 py-4
+                         text-[15px] font-semibold text-[#EEF0E7] tracking-[-0.01em]">
               <Plus size={17} strokeWidth={2.5} /> Nouvelle addition
             </button>
           </div>
@@ -1933,7 +1936,7 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
       )}
 
       {ecran === "saisie" && lignes.length > 0 && (
-        <div className="fixed inset-x-0 bottom-0 z-10 border-t border-[#E5DECD] bg-[#F7F3E8]/92 backdrop-blur-md">
+        <div className="fixed inset-x-0 bottom-0 z-10 border-t border-[#DCE1D1] bg-[#EEF0E7]/92 backdrop-blur-md">
           <div className="mx-auto max-w-[430px] px-5 pb-6 pt-4">
             {(bloque || ecartTotal !== 0) && (
               <div className="monte mb-3 flex items-center gap-2 rounded-[12px] px-3.5 py-2.5
@@ -1953,9 +1956,9 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
               </div>
             )}
             <button onClick={() => setEcran("resultat")} disabled={bloque}
-              className="group flex w-full items-center justify-between rounded-[14px] bg-[#1C1A17] px-5 py-4
-                         text-[15px] font-semibold text-[#F7F3E8] tracking-[-0.01em]
-                         disabled:bg-[#EFE9DA] disabled:text-[#B0A897] transition-colors">
+              className="group flex w-full items-center justify-between rounded-[14px] bg-[#1B231C] px-5 py-4
+                         text-[15px] font-semibold text-[#EEF0E7] tracking-[-0.01em]
+                         disabled:bg-[#E7EADF] disabled:text-[#A7AF98] transition-colors">
               <span className="flex items-center gap-2">
                 Voir qui paie quoi
                 <ArrowRight size={16} strokeWidth={2.5}
@@ -1986,11 +1989,11 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
                       WebkitBackdropFilter: "blur(3px)" }}
                onClick={() => setResteLigne(null)}>
             <div className="monte relative w-full max-w-[400px] rounded-[20px] p-5"
-               style={{ background: "#F7F3E8", border: "1px solid #E5DECD",
+               style={{ background: "#EEF0E7", border: "1px solid #DCE1D1",
                         boxShadow: "0 20px 50px rgba(28,26,23,.35)" }}
                  onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
               <h2 className="text-[18px] font-bold tracking-[-0.02em]">Qui prend le reste ?</h2>
-              <p className="mt-1.5 text-[12.5px] leading-relaxed text-[#8B8578]">
+              <p className="mt-1.5 text-[12.5px] leading-relaxed text-[#7C8172]">
                 Sur {ligne.libelle}. Les personnes choisies se partagent également
                 ce qui n'est pas encore attribué.
               </p>
@@ -2010,28 +2013,28 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
                       }))}
                       className={`flex w-full items-center gap-3 rounded-[12px] border px-3 py-2.5
                                   text-left transition-colors ${
-                        choisi ? "border-[#1C1A17] bg-white" : "border-[#E0D8C7] hover:border-[#CDC4B0]"}`}>
+                        choisi ? "border-[#1B231C] bg-white" : "border-[#D7DCCB] hover:border-[#C2C9B4]"}`}>
                       <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full
-                                       text-[10px] font-bold text-[#F7F3E8]"
+                                       text-[10px] font-bold text-[#EEF0E7]"
                             style={{ background: p.couleur }}>
                         {p.nom.slice(0, 2).toUpperCase()}
                       </span>
                       <span className="min-w-0 flex-1 truncate text-[14px] font-medium">{p.nom}</span>
-                      <span className="shrink-0 text-[12px] tabular-nums text-[#8B8578]"
+                      <span className="shrink-0 text-[12px] tabular-nums text-[#7C8172]"
                             style={{ fontFamily: "'Roboto Mono', monospace" }}>
                         {choisi && chacun ? nomFraction(chacun) : nomFraction(fractionDe(ligne, id))}
                       </span>
                       <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border
                                         transition-colors ${
-                        choisi ? "border-[#1C1A17] bg-[#1C1A17]" : "border-[#DDD5C4]"}`}>
-                        {choisi && <Check size={12} className="text-[#F7F3E8]" strokeWidth={3} />}
+                        choisi ? "border-[#1B231C] bg-[#1B231C]" : "border-[#DCE1D2]"}`}>
+                        {choisi && <Check size={12} className="text-[#EEF0E7]" strokeWidth={3} />}
                       </span>
                     </button>
                   );
                 })}
               </div>
 
-              <p className="mt-3 text-[12px] tabular-nums text-[#8B8578]"
+              <p className="mt-3 text-[12px] tabular-nums text-[#7C8172]"
                  style={{ fontFamily: "'Roboto Mono', monospace" }}>
                 {resteLigne.designes.length === 0
                   ? `Reste à attribuer : ${nomFraction(reste)}`
@@ -2041,13 +2044,13 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
 
               <div className="mt-4 flex gap-2">
                 <button onClick={() => setResteLigne(null)}
-                  className="flex-1 rounded-[12px] border border-[#DDD5C4] py-3 text-[13.5px] font-semibold
+                  className="flex-1 rounded-[12px] border border-[#DCE1D2] py-3 text-[13.5px] font-semibold
                              hover:bg-white transition-colors">
                   Annuler
                 </button>
                 <button onClick={validerReste} disabled={!possible}
-                  className="flex-1 rounded-[12px] bg-[#1C1A17] py-3 text-[13.5px] font-semibold text-[#F7F3E8]
-                             disabled:bg-[#E0D8C7] disabled:text-[#B0A897] transition-colors">
+                  className="flex-1 rounded-[12px] bg-[#1B231C] py-3 text-[13.5px] font-semibold text-[#EEF0E7]
+                             disabled:bg-[#D7DCCB] disabled:text-[#A7AF98] transition-colors">
                   Attribuer
                 </button>
               </div>
@@ -2063,18 +2066,18 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
                       WebkitBackdropFilter: "blur(3px)" }}
              onClick={() => setConfirmation(null)}>
           <div className="monte relative w-full max-w-[400px] rounded-[20px] p-5"
-               style={{ background: "#F7F3E8", border: "1px solid #E5DECD",
+               style={{ background: "#EEF0E7", border: "1px solid #DCE1D1",
                         boxShadow: "0 20px 50px rgba(28,26,23,.35)" }}
                onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
             <h2 className="text-[19px] font-bold tracking-[-0.02em]">Abandonner cette addition ?</h2>
-            <p className="mt-2 text-[13.5px] leading-relaxed text-[#8B8578]">
+            <p className="mt-2 text-[13.5px] leading-relaxed text-[#7C8172]">
               {nbArticles > 0
                 ? `${nbArticles} ${nbArticles > 1 ? "articles seront supprimés" : "article sera supprimé"}. Cette action est définitive.`
                 : "Les personnes ajoutées seront effacées."}
             </p>
             <div className="mt-5 flex gap-2">
               <button onClick={() => setConfirmation(null)}
-                className="flex-1 rounded-[12px] border border-[#DDD5C4] py-3 text-[13.5px] font-semibold
+                className="flex-1 rounded-[12px] border border-[#DCE1D2] py-3 text-[13.5px] font-semibold
                            hover:bg-white transition-colors">
                 Garder
               </button>
@@ -2271,7 +2274,7 @@ function ChampMontantLoc({ centimes, onChange, className, ...props }) {
 
 function AvatarLoc({ personne, taille = 32 }) {
   return (
-    <span className="flex shrink-0 items-center justify-center rounded-full font-bold text-[#F7F3E8]"
+    <span className="flex shrink-0 items-center justify-center rounded-full font-bold text-[#EEF0E7]"
           style={{ width: taille, height: taille, background: personne.couleur,
                    fontSize: taille * 0.36 }}>
       {personne.nom.slice(0, 2).toUpperCase()}
@@ -2597,8 +2600,8 @@ function ModuleLocation({ onRetour, sessionInitiale, modeInvite }) {
 
   if (!pret) {
     return (
-      <div className="flex min-h-screen items-center justify-center" style={{ background: "#F7F3E8" }}>
-        <Loader2 size={22} className="animate-spin" style={{ color: "#B0A897" }} />
+      <div className="flex min-h-screen items-center justify-center" style={{ background: "#EEF0E7" }}>
+        <Loader2 size={22} className="animate-spin" style={{ color: "#A7AF98" }} />
       </div>
     );
   }
@@ -2606,10 +2609,10 @@ function ModuleLocation({ onRetour, sessionInitiale, modeInvite }) {
   if (inviteFin) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-3 px-6 text-center"
-           style={{ background: "#F7F3E8", fontFamily: "'Archivo', system-ui, sans-serif" }}>
-        <Check size={26} style={{ color: "#2E6F5E" }} />
+           style={{ background: "#EEF0E7", fontFamily: "'Archivo', system-ui, sans-serif" }}>
+        <Check size={26} style={{ color: "#A97F2E" }} />
         <p className="text-[17px] font-bold">Location clôturée</p>
-        <p className="max-w-[280px] text-[13.5px] leading-relaxed" style={{ color: "#8B8578" }}>
+        <p className="max-w-[280px] text-[13.5px] leading-relaxed" style={{ color: "#7C8172" }}>
           Tu peux fermer cette page.
         </p>
       </div>
@@ -2623,7 +2626,7 @@ function ModuleLocation({ onRetour, sessionInitiale, modeInvite }) {
       className="flex flex-1 flex-col items-center gap-1 py-2.5 text-[10px] font-bold uppercase
                  tracking-[0.1em] transition-colors"
       style={{ fontFamily: "'Roboto Mono', monospace",
-               color: ongletActif(nom) ? "#1C1A17" : "#B0A897" }}
+               color: ongletActif(nom) ? "#1B231C" : "#A7AF98" }}
     >
       {icone}
       {libelle}
@@ -2632,7 +2635,7 @@ function ModuleLocation({ onRetour, sessionInitiale, modeInvite }) {
 
   return (
     <div className="min-h-screen antialiased"
-         style={{ background: "#F7F3E8", color: "#1C1A17",
+         style={{ background: "#EEF0E7", color: "#1B231C",
                   fontFamily: "'Archivo', system-ui, sans-serif" }}>
       <style>{styles}</style>
 
@@ -2644,11 +2647,11 @@ function ModuleLocation({ onRetour, sessionInitiale, modeInvite }) {
             <header className="pt-10 pb-8">
               <button onClick={onRetour}
                 className="mb-5 -ml-1 flex items-center gap-1 text-[13px] transition-colors"
-                style={{ color: "#8B8578" }}>
+                style={{ color: "#7C8172" }}>
                 <ChevronLeft size={16} /> Accueil
               </button>
               <h1 className="text-[34px] font-bold leading-[0.95] tracking-[-0.035em]">Mes locations</h1>
-              <p className="mt-2 text-[13px]" style={{ color: "#8B8578" }}>
+              <p className="mt-2 text-[13px]" style={{ color: "#7C8172" }}>
                 {historique.length === 0
                   ? "Rien pour l'instant."
                   : `${historique.length} ${historique.length > 1 ? "locations gardées" : "location gardée"}`}
@@ -2657,7 +2660,7 @@ function ModuleLocation({ onRetour, sessionInitiale, modeInvite }) {
 
             {historique.length === 0 ? (
               <p className="rounded-[18px] border border-dashed px-6 py-12 text-center text-[13.5px] leading-relaxed"
-                 style={{ borderColor: "#DDD5C4", color: "#8B8578" }}>
+                 style={{ borderColor: "#DCE1D2", color: "#7C8172" }}>
                 Les locations apparaîtront ici.
               </p>
             ) : (
@@ -2665,14 +2668,14 @@ function ModuleLocation({ onRetour, sessionInitiale, modeInvite }) {
                 {historique.map((h, i) => (
                   <li key={h.jeton}
                       className="monte flex items-center gap-3 rounded-[18px] p-4"
-                      style={{ background: "#fff", boxShadow: "0 0 0 1px #E9E2D2",
+                      style={{ background: "#fff", boxShadow: "0 0 0 1px #E1E5D6",
                                animationDelay: `${i * 35}ms` }}>
                     <button onClick={() => rouvrir(h)} className="min-w-0 flex-1 text-left">
                       <span className="block truncate text-[15px] font-semibold tracking-[-0.01em]">
                         {h.titre || "La location"}
                       </span>
                       <span className="mt-0.5 block text-[11.5px]"
-                            style={{ fontFamily: "'Roboto Mono', monospace", color: "#8B8578" }}>
+                            style={{ fontFamily: "'Roboto Mono', monospace", color: "#7C8172" }}>
                         {h.nuits || 0} nuit{(h.nuits || 0) > 1 ? "s" : ""} · {h.nParticipants} pers.
                       </span>
                     </button>
@@ -2682,7 +2685,7 @@ function ModuleLocation({ onRetour, sessionInitiale, modeInvite }) {
                     </span>
                     <button onClick={() => supprimerHisto(h.jeton)}
                             aria-label={`Supprimer ${h.titre || "cette location"}`}
-                            className="shrink-0 transition-colors" style={{ color: "#C4BCA9" }}>
+                            className="shrink-0 transition-colors" style={{ color: "#BAC2AB" }}>
                       <Trash2 size={15} />
                     </button>
                   </li>
@@ -2699,13 +2702,13 @@ function ModuleLocation({ onRetour, sessionInitiale, modeInvite }) {
             {modeInvite ? <span /> : (
               <button onClick={() => { allerVersAccueil(); setEcran("historique"); }}
                 className="-ml-1 flex items-center gap-1 text-[13px] transition-colors"
-                style={{ color: "#8B8578" }}>
+                style={{ color: "#7C8172" }}>
                 <ChevronLeft size={16} /> Mes locations
               </button>
             )}
             <span className="flex items-center gap-1.5 text-[11px]"
                   style={{ fontFamily: "'Roboto Mono', monospace",
-                           color: sauvegarde === "erreur" ? "#C1362F" : "#B0A897" }}>
+                           color: sauvegarde === "erreur" ? "#C1362F" : "#A7AF98" }}>
               {sauvegarde === "cours" ? <Loader2 size={12} className="animate-spin" />
                 : sauvegarde === "erreur" ? <AlertCircle size={12} /> : <Check size={12} />}
               {sauvegarde === "cours" ? "…" : sauvegarde === "erreur" ? "Non enregistré" : "Enregistré"}
@@ -2722,7 +2725,7 @@ function ModuleLocation({ onRetour, sessionInitiale, modeInvite }) {
           />
           {calcul.nuitsSejour > 0 && (
             <p className="mt-2 text-[12.5px]"
-               style={{ fontFamily: "'Roboto Mono', monospace", color: "#8B8578" }}>
+               style={{ fontFamily: "'Roboto Mono', monospace", color: "#7C8172" }}>
               {locDateCourte(debut)} → {locDateCourte(fin)} · {calcul.nuitsSejour} nuit
               {calcul.nuitsSejour > 1 ? "s" : ""} · {personnes.length} pers.
             </p>
@@ -2731,17 +2734,17 @@ function ModuleLocation({ onRetour, sessionInitiale, modeInvite }) {
           {jeton && (
             <button onClick={partagerLeLien}
               className="monte mt-4 flex w-full items-center gap-2.5 rounded-[14px] bg-white p-3 text-left
-                         transition-colors hover:bg-[#F5F1E5]"
-              style={{ boxShadow: "0 0 0 1px #E9E2D2" }}>
+                         transition-colors hover:bg-[#EFF1E9]"
+              style={{ boxShadow: "0 0 0 1px #E1E5D6" }}>
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
-                    style={{ background: "#F2EDE0", color: "#8B8578" }}>
+                    style={{ background: "#ECEEE4", color: "#7C8172" }}>
                 <Share2 size={14} />
               </span>
               <span className="min-w-0 flex-1 truncate text-[12px]"
-                    style={{ fontFamily: "'Roboto Mono', monospace", color: "#8B8578" }}>
+                    style={{ fontFamily: "'Roboto Mono', monospace", color: "#7C8172" }}>
                 {location.origin.replace(/^https?:\/\//, "")}/s/{jeton}
               </span>
-              <span className="shrink-0 text-[12px] font-semibold" style={{ color: "#1C1A17" }}>
+              <span className="shrink-0 text-[12px] font-semibold" style={{ color: "#1B231C" }}>
                 {partageLienEtat === "copie" ? "Copié !" : "Partager"}
               </span>
             </button>
@@ -2752,9 +2755,9 @@ function ModuleLocation({ onRetour, sessionInitiale, modeInvite }) {
         {ecran === "sejour" && (
           <>
             <section className="mb-8 rounded-[18px] p-4"
-                     style={{ background: "#fff", boxShadow: "0 0 0 1px #E9E2D2" }}>
+                     style={{ background: "#fff", boxShadow: "0 0 0 1px #E1E5D6" }}>
               <div className="mb-4 flex items-baseline justify-between gap-3">
-                <span className="text-[14px]" style={{ color: "#8B8578" }}>Coût total de la location</span>
+                <span className="text-[14px]" style={{ color: "#7C8172" }}>Coût total de la location</span>
                 <div className="flex shrink-0 items-baseline gap-1">
                   <ChampMontantLoc
                     centimes={loyer}
@@ -2764,39 +2767,39 @@ function ModuleLocation({ onRetour, sessionInitiale, modeInvite }) {
                                font-bold tabular-nums focus:outline-none"
                     style={{ fontFamily: "'Roboto Mono', monospace" }}
                   />
-                  <span className="text-[13px] font-medium" style={{ color: "#8B8578" }}>€</span>
+                  <span className="text-[13px] font-medium" style={{ color: "#7C8172" }}>€</span>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-2.5 border-t border-dashed pt-4"
-                   style={{ borderColor: "#E5DECD" }}>
+                   style={{ borderColor: "#DCE1D1" }}>
                 <label className="block">
                   <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.14em]"
-                        style={{ fontFamily: "'Roboto Mono', monospace", color: "#8B8578" }}>
+                        style={{ fontFamily: "'Roboto Mono', monospace", color: "#7C8172" }}>
                     Arrivée
                   </span>
                   <input type="date" value={debut}
                     onChange={(e) => changerDebutSejour(e.target.value)}
                     className="w-full rounded-[10px] px-2.5 py-2 text-[13.5px] focus:outline-none"
-                    style={{ border: "1px solid #E0D8C7", background: "#FCFAF5",
+                    style={{ border: "1px solid #D7DCCB", background: "#FFFFFF",
                              fontFamily: "'Roboto Mono', monospace" }} />
                 </label>
                 <label className="block">
                   <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.14em]"
-                        style={{ fontFamily: "'Roboto Mono', monospace", color: "#8B8578" }}>
+                        style={{ fontFamily: "'Roboto Mono', monospace", color: "#7C8172" }}>
                     Départ
                   </span>
                   <input type="date" value={fin} min={debut}
                     onChange={(e) => changerFinSejour(e.target.value)}
                     className="w-full rounded-[10px] px-2.5 py-2 text-[13.5px] focus:outline-none"
-                    style={{ border: "1px solid #E0D8C7", background: "#FCFAF5",
+                    style={{ border: "1px solid #D7DCCB", background: "#FFFFFF",
                              fontFamily: "'Roboto Mono', monospace" }} />
                 </label>
               </div>
 
               {calcul.nuitsSejour > 0 && loyer > 0 && (
                 <p className="mt-3 text-[12px] tabular-nums"
-                   style={{ fontFamily: "'Roboto Mono', monospace", color: "#8B8578" }}>
+                   style={{ fontFamily: "'Roboto Mono', monospace", color: "#7C8172" }}>
                   {locFmt(Math.round(loyer / calcul.nuitsSejour))} € la nuit
                   {calcul.totalNuitees > 0 &&
                     ` · ${locFmt(Math.round(loyer / calcul.totalNuitees))} € par personne et par nuit`}
@@ -2813,15 +2816,15 @@ function ModuleLocation({ onRetour, sessionInitiale, modeInvite }) {
             <section>
               <div className="mb-3.5 flex items-center gap-3">
                 <span className="text-[10px] font-bold uppercase tracking-[0.2em]"
-                      style={{ fontFamily: "'Roboto Mono', monospace", color: "#8B8578" }}>
+                      style={{ fontFamily: "'Roboto Mono', monospace", color: "#7C8172" }}>
                   Qui vient
                 </span>
-                <span className="h-px flex-1" style={{ background: "#DDD5C4" }} />
+                <span className="h-px flex-1" style={{ background: "#DCE1D2" }} />
               </div>
 
               {personnes.length === 0 ? (
                 <p className="rounded-[18px] px-6 py-10 text-center text-[13.5px] leading-relaxed"
-                   style={{ border: "1px dashed #DDD5C4", color: "#8B8578" }}>
+                   style={{ border: "1px dashed #DCE1D2", color: "#7C8172" }}>
                   Ajoutez les personnes qui participent.
                 </p>
               ) : (
@@ -2831,18 +2834,18 @@ function ModuleLocation({ onRetour, sessionInitiale, modeInvite }) {
                     const ouvert = deplie.includes(p.id);
                     return (
                       <li key={p.id} className="monte overflow-hidden rounded-[18px]"
-                          style={{ background: "#fff", boxShadow: "0 0 0 1px #E9E2D2" }}>
+                          style={{ background: "#fff", boxShadow: "0 0 0 1px #E1E5D6" }}>
                         <div className="flex items-center gap-3 p-4">
                           <AvatarLoc personne={p} taille={34} />
                           <button onClick={() => setDeplie((d) =>
                                     d.includes(p.id) ? d.filter((x) => x !== p.id) : [...d, p.id])}
                                   className="min-w-0 flex-1 text-left">
                             <span className="block truncate text-[15px] font-semibold">
-                              {p.nom}{p.id === moi && <span style={{ color: "#8B8578" }}> (vous)</span>}
+                              {p.nom}{p.id === moi && <span style={{ color: "#7C8172" }}> (vous)</span>}
                             </span>
                             <span className="mt-0.5 block text-[11.5px] tabular-nums"
                                   style={{ fontFamily: "'Roboto Mono', monospace",
-                                           color: partiel ? "#B5761F" : "#8B8578" }}>
+                                           color: partiel ? "#B5761F" : "#7C8172" }}>
                               {p.locNuits} nuit{p.locNuits > 1 ? "s" : ""}
                               {partiel && ` · ${locDateCourte(p.debutEff)}→${locDateCourte(p.finEff)}`}
                             </span>
@@ -2854,45 +2857,45 @@ function ModuleLocation({ onRetour, sessionInitiale, modeInvite }) {
                           <button onClick={() => retirerPersonne(p.id)}
                                   aria-label={`Retirer ${p.nom}`}
                                   className="shrink-0 transition-colors"
-                                  style={{ color: "#C4BCA9" }}>
+                                  style={{ color: "#BAC2AB" }}>
                             <Trash2 size={15} />
                           </button>
                         </div>
 
                         {ouvert && (
                           <div className="border-t border-dashed px-4 pb-4 pt-3"
-                               style={{ borderColor: "#E5DECD" }}>
-                            <p className="mb-3 text-[11.5px] leading-relaxed" style={{ color: "#8B8578" }}>
+                               style={{ borderColor: "#DCE1D1" }}>
+                            <p className="mb-3 text-[11.5px] leading-relaxed" style={{ color: "#7C8172" }}>
                               Laissez vide si la personne est présente tout le séjour.
                             </p>
                             <div className="grid grid-cols-2 gap-2.5">
                               <label className="block">
                                 <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.14em]"
-                                      style={{ fontFamily: "'Roboto Mono', monospace", color: "#8B8578" }}>
+                                      style={{ fontFamily: "'Roboto Mono', monospace", color: "#7C8172" }}>
                                   Arrive le
                                 </span>
                                 <input type="date" value={p.debut || debut} min={debut} max={fin}
                                   onChange={(e) => majPersonne(p.id, "debut", e.target.value)}
                                   className="w-full rounded-[10px] px-2.5 py-2 text-[13px] focus:outline-none"
-                                  style={{ border: "1px solid #E0D8C7", background: "#FCFAF5",
+                                  style={{ border: "1px solid #D7DCCB", background: "#FFFFFF",
                                            fontFamily: "'Roboto Mono', monospace" }} />
                               </label>
                               <label className="block">
                                 <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.14em]"
-                                      style={{ fontFamily: "'Roboto Mono', monospace", color: "#8B8578" }}>
+                                      style={{ fontFamily: "'Roboto Mono', monospace", color: "#7C8172" }}>
                                   Repart le
                                 </span>
                                 <input type="date" value={p.fin || fin} min={p.debut || debut} max={fin}
                                   onChange={(e) => majPersonne(p.id, "fin", e.target.value)}
                                   className="w-full rounded-[10px] px-2.5 py-2 text-[13px] focus:outline-none"
-                                  style={{ border: "1px solid #E0D8C7", background: "#FCFAF5",
+                                  style={{ border: "1px solid #D7DCCB", background: "#FFFFFF",
                                            fontFamily: "'Roboto Mono', monospace" }} />
                               </label>
                             </div>
                             {(p.debut || p.fin) && (
                               <button onClick={() => { majPersonne(p.id, "debut", ""); majPersonne(p.id, "fin", ""); }}
                                 className="mt-2.5 text-[11.5px] font-medium transition-colors"
-                                style={{ color: "#8B8578" }}>
+                                style={{ color: "#7C8172" }}>
                                 Tout le séjour
                               </button>
                             )}
@@ -2906,7 +2909,7 @@ function ModuleLocation({ onRetour, sessionInitiale, modeInvite }) {
 
               {/* ajout */}
               <div className="mt-3 flex items-center gap-1 rounded-full py-1 pl-3 pr-1"
-                   style={{ border: "1px dashed #CDC4B0", width: "fit-content" }}>
+                   style={{ border: "1px dashed #C2C9B4", width: "fit-content" }}>
                 <input
                   value={nouveauNom}
                   onChange={(e) => setNouveauNom(e.target.value)}
@@ -2918,8 +2921,8 @@ function ModuleLocation({ onRetour, sessionInitiale, modeInvite }) {
                 <button onClick={() => ajouterPersonne(nouveauNom)} disabled={!nouveauNom.trim()}
                   aria-label="Ajouter cette personne"
                   className="flex h-7 w-7 items-center justify-center rounded-full transition-colors"
-                  style={{ background: nouveauNom.trim() ? "#1C1A17" : "#E0D8C7",
-                           color: nouveauNom.trim() ? "#F7F3E8" : "#B0A897" }}>
+                  style={{ background: nouveauNom.trim() ? "#1B231C" : "#D7DCCB",
+                           color: nouveauNom.trim() ? "#EEF0E7" : "#A7AF98" }}>
                   <Plus size={14} strokeWidth={2.5} />
                 </button>
               </div>
@@ -2927,14 +2930,14 @@ function ModuleLocation({ onRetour, sessionInitiale, modeInvite }) {
               {suggestions.length > 0 && (
                 <div className="mt-3">
                   <span className="mb-2 block text-[10px] font-bold uppercase tracking-[0.14em]"
-                        style={{ fontFamily: "'Roboto Mono', monospace", color: "#B0A897" }}>
+                        style={{ fontFamily: "'Roboto Mono', monospace", color: "#A7AF98" }}>
                     Déjà venus
                   </span>
                   <div className="flex flex-wrap gap-1.5">
                     {suggestions.map((n) => (
                       <button key={n} onClick={() => ajouterPersonne(n)}
                         className="rounded-full px-3 py-1 text-[12.5px] transition-colors"
-                        style={{ border: "1px solid #E0D8C7", color: "#8B8578" }}>
+                        style={{ border: "1px solid #D7DCCB", color: "#7C8172" }}>
                         + {n}
                       </button>
                     ))}
@@ -2949,16 +2952,16 @@ function ModuleLocation({ onRetour, sessionInitiale, modeInvite }) {
         {ecran === "paiements" && (
           <>
             <section className="mb-7 rounded-[18px] p-4"
-                     style={{ background: "#fff", boxShadow: "0 0 0 1px #E9E2D2" }}>
+                     style={{ background: "#fff", boxShadow: "0 0 0 1px #E1E5D6" }}>
               <div className="flex items-baseline justify-between text-[13px]"
-                   style={{ fontFamily: "'Roboto Mono', monospace", color: "#8B8578" }}>
+                   style={{ fontFamily: "'Roboto Mono', monospace", color: "#7C8172" }}>
                 <span>Encaissé</span>
                 <span className="tabular-nums">{locFmt(calcul.totalVerse)} € / {locFmt(loyer)} €</span>
               </div>
-              <div className="mt-2.5 h-2 overflow-hidden rounded-full" style={{ background: "#F0EADB" }}>
+              <div className="mt-2.5 h-2 overflow-hidden rounded-full" style={{ background: "#E8EBE0" }}>
                 <div className="h-full rounded-full transition-all duration-500"
                      style={{ width: `${loyer > 0 ? Math.min(100, (calcul.totalVerse / loyer) * 100) : 0}%`,
-                              background: calcul.reste <= 0 ? "#2E6F5E" : "#B5761F" }} />
+                              background: calcul.reste <= 0 ? "#A97F2E" : "#B5761F" }} />
               </div>
               {calcul.totalAnnonce > calcul.totalVerse && (
                 <p className="mt-2.5 text-[11.5px] tabular-nums"
@@ -2968,13 +2971,13 @@ function ModuleLocation({ onRetour, sessionInitiale, modeInvite }) {
               )}
               {calcul.reste > 0 && (
                 <p className="mt-1.5 text-[11.5px] tabular-nums"
-                   style={{ fontFamily: "'Roboto Mono', monospace", color: "#8B8578" }}>
+                   style={{ fontFamily: "'Roboto Mono', monospace", color: "#7C8172" }}>
                   Reste à collecter : {locFmt(calcul.reste)} €
                 </p>
               )}
               {calcul.reste < 0 && (
                 <p className="mt-1.5 text-[11.5px] tabular-nums"
-                   style={{ fontFamily: "'Roboto Mono', monospace", color: "#2E6F5E" }}>
+                   style={{ fontFamily: "'Roboto Mono', monospace", color: "#A97F2E" }}>
                   Trop-perçu de {locFmt(-calcul.reste)} € — à redistribuer
                 </p>
               )}
@@ -2985,7 +2988,7 @@ function ModuleLocation({ onRetour, sessionInitiale, modeInvite }) {
                 onClick={() => reglerTout(calcul.resultats.filter((p) => p.solde < 0))}
                 className="mb-4 flex w-full items-center justify-center gap-2 rounded-[14px] py-3
                            text-[13px] font-semibold transition-colors"
-                style={{ border: "1px dashed #CDC4B0", color: "#8B8578" }}>
+                style={{ border: "1px dashed #C2C9B4", color: "#7C8172" }}>
                 <Check size={15} strokeWidth={2.5} />
                 Tout le monde a réglé sa part
               </button>
@@ -2993,7 +2996,7 @@ function ModuleLocation({ onRetour, sessionInitiale, modeInvite }) {
 
             {personnes.length === 0 ? (
               <p className="rounded-[18px] px-6 py-10 text-center text-[13.5px] leading-relaxed"
-                 style={{ border: "1px dashed #DDD5C4", color: "#8B8578" }}>
+                 style={{ border: "1px dashed #DCE1D2", color: "#7C8172" }}>
                 Ajoutez d'abord les participants dans l'onglet Séjour.
               </p>
             ) : (
@@ -3002,19 +3005,19 @@ function ModuleLocation({ onRetour, sessionInitiale, modeInvite }) {
                   const versements = paiements.filter((v) => v.personneId === p.id);
                   return (
                     <li key={p.id} className="monte overflow-hidden rounded-[18px]"
-                        style={{ background: "#fff", boxShadow: "0 0 0 1px #E9E2D2" }}>
+                        style={{ background: "#fff", boxShadow: "0 0 0 1px #E1E5D6" }}>
                       <div className="flex items-center gap-3 p-4">
                         <AvatarLoc personne={p} taille={34} />
                         <div className="min-w-0 flex-1">
                           <span className="block truncate text-[15px] font-semibold">{p.nom}</span>
                           <span className="mt-0.5 block text-[11.5px] tabular-nums"
-                                style={{ fontFamily: "'Roboto Mono', monospace", color: "#8B8578" }}>
+                                style={{ fontFamily: "'Roboto Mono', monospace", color: "#7C8172" }}>
                             doit {locFmt(p.part)} € · versé {locFmt(p.verse)} €
                           </span>
                         </div>
                         <span className="shrink-0 text-[15px] font-bold tabular-nums"
                               style={{ fontFamily: "'Roboto Mono', monospace",
-                                       color: p.solde === 0 ? "#2E6F5E"
+                                       color: p.solde === 0 ? "#A97F2E"
                                             : p.solde > 0 ? "#B5761F" : "#C1362F" }}>
                           {p.solde === 0 ? "à jour"
                             : p.solde > 0 ? `+${locFmt(p.solde)}` : locFmt(p.solde)}
@@ -3023,28 +3026,28 @@ function ModuleLocation({ onRetour, sessionInitiale, modeInvite }) {
 
                       {versements.length > 0 && (
                         <ul className="border-t border-dashed px-4 py-2"
-                            style={{ borderColor: "#E5DECD" }}>
+                            style={{ borderColor: "#DCE1D1" }}>
                           {versements.map((v) => (
                             <li key={v.id} className="flex items-center gap-2.5 py-1.5">
                               <button onClick={() => basculerRecu(v.id)}
                                 aria-label={v.recu ? "Marquer comme non reçu" : "Marquer comme reçu"}
                                 className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full
                                            transition-colors"
-                                style={{ border: `1.5px solid ${v.recu ? "#2E6F5E" : "#DDD5C4"}`,
-                                         background: v.recu ? "#2E6F5E" : "transparent" }}>
+                                style={{ border: `1.5px solid ${v.recu ? "#A97F2E" : "#DCE1D2"}`,
+                                         background: v.recu ? "#A97F2E" : "transparent" }}>
                                 {v.recu && <Check size={13} strokeWidth={3} style={{ color: "#fff" }} />}
                               </button>
                               <span className="flex-1 text-[13px] tabular-nums"
                                     style={{ fontFamily: "'Roboto Mono', monospace",
-                                             color: v.recu ? "#1C1A17" : "#B0A897" }}>
+                                             color: v.recu ? "#1B231C" : "#A7AF98" }}>
                                 {locFmt(v.montant)} €
-                                <span className="ml-2 text-[11px]" style={{ color: "#B0A897" }}>
+                                <span className="ml-2 text-[11px]" style={{ color: "#A7AF98" }}>
                                   {v.recu ? "reçu" : "annoncé"}
                                 </span>
                               </span>
                               <button onClick={() => supprimerPaiement(v.id)}
                                 aria-label="Supprimer ce versement"
-                                style={{ color: "#C4BCA9" }}>
+                                style={{ color: "#BAC2AB" }}>
                                 <X size={14} strokeWidth={2.5} />
                               </button>
                             </li>
@@ -3054,7 +3057,7 @@ function ModuleLocation({ onRetour, sessionInitiale, modeInvite }) {
 
                       {ajoutPaiement === p.id ? (
                         <div className="flex items-center gap-2 border-t border-dashed px-4 py-3"
-                             style={{ borderColor: "#E5DECD", background: "#FCFAF5" }}>
+                             style={{ borderColor: "#DCE1D1", background: "#FFFFFF" }}>
                           <ChampMontantLoc
                             centimes={montantSaisi}
                             onChange={setMontantSaisi}
@@ -3063,30 +3066,30 @@ function ModuleLocation({ onRetour, sessionInitiale, modeInvite }) {
                             className="w-[80px] rounded-md px-2 py-1.5 text-right text-[14px]
                                        font-bold tabular-nums focus:outline-none"
                             style={{ fontFamily: "'Roboto Mono', monospace",
-                                     border: "1px solid #E0D8C7", background: "#fff" }}
+                                     border: "1px solid #D7DCCB", background: "#fff" }}
                           />
-                          <span className="text-[12px]" style={{ color: "#8B8578" }}>€</span>
+                          <span className="text-[12px]" style={{ color: "#7C8172" }}>€</span>
                           <button onClick={() => ajouterPaiement(p.id, montantSaisi)}
                             disabled={montantSaisi <= 0}
                             className="ml-auto rounded-[10px] px-3 py-2 text-[12.5px] font-semibold transition-colors"
-                            style={{ background: montantSaisi > 0 ? "#1C1A17" : "#E0D8C7",
-                                     color: montantSaisi > 0 ? "#F7F3E8" : "#B0A897" }}>
+                            style={{ background: montantSaisi > 0 ? "#1B231C" : "#D7DCCB",
+                                     color: montantSaisi > 0 ? "#EEF0E7" : "#A7AF98" }}>
                             Enregistrer
                           </button>
                           <button onClick={() => { setAjoutPaiement(null); setMontantSaisi(0); }}
                             className="rounded-[10px] px-2.5 py-2 text-[12.5px]"
-                            style={{ color: "#8B8578" }}>
+                            style={{ color: "#7C8172" }}>
                             Annuler
                           </button>
                         </div>
                       ) : (
-                        <div className="flex border-t border-dashed" style={{ borderColor: "#E5DECD" }}>
+                        <div className="flex border-t border-dashed" style={{ borderColor: "#DCE1D1" }}>
                           {p.solde < 0 && (
                             <button
                               onClick={() => soldeEnUnCoup(p.id, -p.solde)}
                               className="flex flex-1 items-center justify-center gap-1.5 py-2.5
                                          text-[12.5px] font-semibold transition-colors"
-                              style={{ color: "#2E6F5E" }}>
+                              style={{ color: "#A97F2E" }}>
                               <Check size={14} strokeWidth={2.5} /> Réglé — {locFmt(-p.solde)} €
                             </button>
                           )}
@@ -3094,10 +3097,10 @@ function ModuleLocation({ onRetour, sessionInitiale, modeInvite }) {
                             onClick={() => { setAjoutPaiement(p.id); setMontantSaisi(Math.max(0, -p.solde)); }}
                             className="flex items-center justify-center gap-1.5 py-2.5 text-[12.5px]
                                        font-semibold transition-colors"
-                            style={{ color: "#8B8578",
+                            style={{ color: "#7C8172",
                                      flex: p.solde < 0 ? "0 0 auto" : "1",
                                      paddingInline: p.solde < 0 ? "1rem" : 0,
-                                     borderLeft: p.solde < 0 ? "1px dashed #E5DECD" : "none" }}>
+                                     borderLeft: p.solde < 0 ? "1px dashed #DCE1D1" : "none" }}>
                             <Plus size={14} strokeWidth={2.5} />
                             {p.solde < 0 ? "" : "Noter un versement"}
                           </button>
@@ -3116,10 +3119,10 @@ function ModuleLocation({ onRetour, sessionInitiale, modeInvite }) {
           <>
             {mouvements.length === 0 && calcul.reste <= 0 ? (
               <div className="rounded-[18px] px-6 py-12 text-center"
-                   style={{ border: "1px dashed #DDD5C4" }}>
-                <Check size={26} className="mx-auto mb-3" style={{ color: "#2E6F5E" }} />
+                   style={{ border: "1px dashed #DCE1D2" }}>
+                <Check size={26} className="mx-auto mb-3" style={{ color: "#A97F2E" }} />
                 <p className="text-[14px] font-semibold">Tout est équilibré</p>
-                <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: "#8B8578" }}>
+                <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: "#7C8172" }}>
                   Personne ne doit rien à personne.
                 </p>
               </div>
@@ -3154,14 +3157,14 @@ function ModuleLocation({ onRetour, sessionInitiale, modeInvite }) {
                   <>
                     <div className="mb-3.5 flex items-center gap-3">
                       <span className="text-[10px] font-bold uppercase tracking-[0.2em]"
-                            style={{ fontFamily: "'Roboto Mono', monospace", color: "#8B8578" }}>
+                            style={{ fontFamily: "'Roboto Mono', monospace", color: "#7C8172" }}>
                         Remboursements
                       </span>
-                      <span className="h-px flex-1" style={{ background: "#DDD5C4" }} />
+                      <span className="h-px flex-1" style={{ background: "#DCE1D2" }} />
                       <span className="shrink-0 text-[11px] font-bold tabular-nums"
                             style={{ fontFamily: "'Roboto Mono', monospace",
                                      color: mouvements.length > 6 && etat.modeTransfert !== "cagnotte"
-                                       ? "#C1362F" : "#8B8578" }}>
+                                       ? "#C1362F" : "#7C8172" }}>
                         {etat.modeTransfert === "cagnotte"
                           ? `${mouvements.filter((m) => m.vers === null).length} versement${
                               mouvements.filter((m) => m.vers === null).length > 1 ? "s" : ""}`
@@ -3169,14 +3172,14 @@ function ModuleLocation({ onRetour, sessionInitiale, modeInvite }) {
                       </span>
                     </div>
 
-                    <div className="mb-3 flex gap-1 rounded-[12px] p-1" style={{ background: "#F0EADB" }}>
+                    <div className="mb-3 flex gap-1 rounded-[12px] p-1" style={{ background: "#E8EBE0" }}>
                       {[["cagnotte", "Cagnotte"], ["simple", "Au plus court"], ["prorata", "Au prorata"]]
                         .map(([v, l]) => (
                         <button key={v} onClick={() => changerModeTransfert(v)}
                           className="flex-1 rounded-[9px] py-2 text-[11.5px] font-semibold transition-colors"
                           style={etat.modeTransfert === v
-                            ? { background: "#fff", color: "#1C1A17", boxShadow: "0 1px 2px rgba(28,26,23,.1)" }
-                            : { color: "#8B8578" }}>
+                            ? { background: "#fff", color: "#1B231C", boxShadow: "0 1px 2px rgba(28,26,23,.1)" }
+                            : { color: "#7C8172" }}>
                           {l}
                         </button>
                       ))}
@@ -3185,7 +3188,7 @@ function ModuleLocation({ onRetour, sessionInitiale, modeInvite }) {
                     {etat.modeTransfert === "cagnotte" ? (
                       <>
                         <div className="mb-3 rounded-[16px] p-4"
-                             style={{ background: "#1C1A17", color: "#F7F3E8" }}>
+                             style={{ background: "#1B231C", color: "#EEF0E7" }}>
                           <div className="flex items-baseline justify-between">
                             <span className="text-[12px] font-bold uppercase tracking-[0.14em]"
                                   style={{ fontFamily: "'Roboto Mono', monospace", opacity: .6 }}>
@@ -3206,13 +3209,13 @@ function ModuleLocation({ onRetour, sessionInitiale, modeInvite }) {
                         {mouvements.filter((m) => m.vers === null).length > 0 && (
                           <>
                             <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.16em]"
-                               style={{ fontFamily: "'Roboto Mono', monospace", color: "#8B8578" }}>
+                               style={{ fontFamily: "'Roboto Mono', monospace", color: "#7C8172" }}>
                               Versent dans la cagnotte
                             </p>
                             <ul className="mb-4 space-y-2">
                               {mouvements.filter((m) => m.vers === null).map((m, i) => (
                                 <li key={`e${i}`} className="monte flex items-center gap-2.5 rounded-[14px] p-3.5"
-                                    style={{ background: "#fff", boxShadow: "0 0 0 1px #E9E2D2",
+                                    style={{ background: "#fff", boxShadow: "0 0 0 1px #E1E5D6",
                                              animationDelay: `${i * 40}ms` }}>
                                   <AvatarLoc personne={m.de} taille={28} />
                                   <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium">
@@ -3231,25 +3234,25 @@ function ModuleLocation({ onRetour, sessionInitiale, modeInvite }) {
                         {mouvements.filter((m) => m.de === null).length > 0 && (
                           <>
                             <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.16em]"
-                               style={{ fontFamily: "'Roboto Mono', monospace", color: "#8B8578" }}>
+                               style={{ fontFamily: "'Roboto Mono', monospace", color: "#7C8172" }}>
                               Ont avancé — crédit dans la cagnotte
                             </p>
                             <div className="rounded-[14px] p-3.5"
-                                 style={{ background: "#fff", boxShadow: "0 0 0 1px #E9E2D2" }}>
+                                 style={{ background: "#fff", boxShadow: "0 0 0 1px #E1E5D6" }}>
                               {mouvements.filter((m) => m.de === null).map((m, i) => (
                                 <div key={`s${i}`}
                                      className={`flex items-center gap-2.5 py-1.5 ${i > 0 ? "border-t border-dashed" : ""}`}
-                                     style={{ borderColor: "#E5DECD" }}>
+                                     style={{ borderColor: "#DCE1D1" }}>
                                   <AvatarLoc personne={m.vers} taille={22} />
                                   <span className="min-w-0 flex-1 truncate text-[13px]">{m.vers.nom}</span>
                                   <span className="shrink-0 text-[13px] font-bold tabular-nums"
-                                        style={{ fontFamily: "'Roboto Mono', monospace", color: "#2E6F5E" }}>
+                                        style={{ fontFamily: "'Roboto Mono', monospace", color: "#A97F2E" }}>
                                     +{locFmt(m.montant)} €
                                   </span>
                                 </div>
                               ))}
                               <p className="mt-2.5 border-t pt-2.5 text-[11.5px] leading-relaxed"
-                                 style={{ borderColor: "#E5DECD", color: "#8B8578" }}>
+                                 style={{ borderColor: "#DCE1D1", color: "#7C8172" }}>
                                 Ces montants restent dans la cagnotte. Reportez-les dans votre
                                 Tricount de vacances plutôt que de faire des virements de
                                 {" "}{locFmt(Math.round(potCommun.sorties / mouvements.filter((m) => m.de === null).length))} €.
@@ -3262,11 +3265,11 @@ function ModuleLocation({ onRetour, sessionInitiale, modeInvite }) {
                       <ul className="space-y-2.5">
                         {mouvements.map((m, i) => (
                           <li key={i} className="monte flex items-center gap-2.5 rounded-[18px] p-4"
-                              style={{ background: "#fff", boxShadow: "0 0 0 1px #E9E2D2",
+                              style={{ background: "#fff", boxShadow: "0 0 0 1px #E1E5D6",
                                        animationDelay: `${i * 45}ms` }}>
                             <AvatarLoc personne={m.de} taille={30} />
                             <span className="min-w-0 truncate text-[13.5px] font-medium">{m.de.nom}</span>
-                            <ArrowRight size={15} className="shrink-0" style={{ color: "#B0A897" }} />
+                            <ArrowRight size={15} className="shrink-0" style={{ color: "#A7AF98" }} />
                             <AvatarLoc personne={m.vers} taille={30} />
                             <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium">{m.vers.nom}</span>
                             <span className="shrink-0 text-[15px] font-bold tabular-nums"
@@ -3279,7 +3282,7 @@ function ModuleLocation({ onRetour, sessionInitiale, modeInvite }) {
                     )}
 
                     <p className="mt-4 flex items-start gap-2 rounded-[12px] px-3.5 py-3 text-[11.5px] leading-relaxed"
-                       style={{ background: "#F2EDE0", color: "#8B8578" }}>
+                       style={{ background: "#ECEEE4", color: "#7C8172" }}>
                       <Info size={14} className="mt-px shrink-0" />
                       {etat.modeTransfert === "cagnotte"
                         ? "Un seul versement par personne dans un pot commun. L'argent n'appartient à personne en particulier : il sert au groupe, et le reliquat se règle avec le reste des dépenses de vacances."
@@ -3297,32 +3300,32 @@ function ModuleLocation({ onRetour, sessionInitiale, modeInvite }) {
               <section className="mt-8">
                 <div className="mb-3.5 flex items-center gap-3">
                   <span className="text-[10px] font-bold uppercase tracking-[0.2em]"
-                        style={{ fontFamily: "'Roboto Mono', monospace", color: "#8B8578" }}>
+                        style={{ fontFamily: "'Roboto Mono', monospace", color: "#7C8172" }}>
                     Détail
                   </span>
-                  <span className="h-px flex-1" style={{ background: "#DDD5C4" }} />
+                  <span className="h-px flex-1" style={{ background: "#DCE1D2" }} />
                 </div>
-                <div className="rounded-[18px] p-4" style={{ background: "#fff", boxShadow: "0 0 0 1px #E9E2D2" }}>
+                <div className="rounded-[18px] p-4" style={{ background: "#fff", boxShadow: "0 0 0 1px #E1E5D6" }}>
                   {calcul.resultats.map((p, i) => (
                     <div key={p.id}
                          className={`flex items-baseline gap-2 py-2 text-[12.5px] tabular-nums ${
                            i > 0 ? "border-t border-dashed" : ""}`}
                          style={{ fontFamily: "'Roboto Mono', monospace",
-                                  borderColor: "#E5DECD" }}>
+                                  borderColor: "#DCE1D1" }}>
                       <span className="min-w-0 flex-1 truncate">{p.nom}</span>
-                      <span style={{ color: "#8B8578" }}>{p.locNuits}n</span>
-                      <span className="w-[62px] text-right" style={{ color: "#8B8578" }}>{locFmt(p.part)}</span>
+                      <span style={{ color: "#7C8172" }}>{p.locNuits}n</span>
+                      <span className="w-[62px] text-right" style={{ color: "#7C8172" }}>{locFmt(p.part)}</span>
                       <span className="w-[62px] text-right">{locFmt(p.verse)}</span>
                       <span className="w-[66px] text-right font-bold"
-                            style={{ color: p.solde === 0 ? "#2E6F5E"
+                            style={{ color: p.solde === 0 ? "#A97F2E"
                                           : p.solde > 0 ? "#B5761F" : "#C1362F" }}>
                         {p.solde > 0 ? "+" : ""}{locFmt(p.solde)}
                       </span>
                     </div>
                   ))}
                   <div className="mt-1 flex items-baseline gap-2 border-t pt-2.5 text-[11px]"
-                       style={{ fontFamily: "'Roboto Mono', monospace", borderColor: "#DDD5C4",
-                                color: "#B0A897" }}>
+                       style={{ fontFamily: "'Roboto Mono', monospace", borderColor: "#DCE1D2",
+                                color: "#A7AF98" }}>
                     <span className="flex-1">Nuits · dû · versé · solde</span>
                   </div>
                 </div>
@@ -3331,8 +3334,8 @@ function ModuleLocation({ onRetour, sessionInitiale, modeInvite }) {
 
             <button onClick={cloturer}
               className="mt-5 w-full rounded-[14px] border border-dashed py-3.5 text-[13px] font-semibold
-                         transition-colors hover:border-[#1C1A17] hover:text-[#1C1A17]"
-              style={{ borderColor: "#CDC4B0", color: "#8B8578" }}>
+                         transition-colors hover:border-[#1B231C] hover:text-[#1B231C]"
+              style={{ borderColor: "#C2C9B4", color: "#7C8172" }}>
               Terminer et ranger dans l'historique
             </button>
           </>
@@ -3343,7 +3346,7 @@ function ModuleLocation({ onRetour, sessionInitiale, modeInvite }) {
       {/* onglets */}
       {ecran !== "historique" ? (
         <nav className="fixed inset-x-0 bottom-0 z-10"
-             style={{ borderTop: "1px solid #E5DECD", background: "rgba(247,243,232,.95)",
+             style={{ borderTop: "1px solid #DCE1D1", background: "rgba(247,243,232,.95)",
                       backdropFilter: "blur(8px)" }}>
           <div className="mx-auto flex max-w-[430px] px-3 pb-5 pt-1">
             {onglet("sejour", "Séjour", <CalendarDays size={17} />)}
@@ -3352,12 +3355,12 @@ function ModuleLocation({ onRetour, sessionInitiale, modeInvite }) {
           </div>
         </nav>
       ) : (
-        <div className="fixed inset-x-0 bottom-0 z-10 border-t bg-[#F7F3E8]/92 backdrop-blur-md"
-             style={{ borderColor: "#E5DECD" }}>
+        <div className="fixed inset-x-0 bottom-0 z-10 border-t bg-[#EEF0E7]/92 backdrop-blur-md"
+             style={{ borderColor: "#DCE1D1" }}>
           <div className="mx-auto max-w-[430px] px-5 pb-6 pt-4">
             <button onClick={nouvelleLocation}
-              className="flex w-full items-center justify-center gap-2 rounded-[14px] bg-[#1C1A17] px-5 py-4
-                         text-[15px] font-semibold text-[#F7F3E8] tracking-[-0.01em]">
+              className="flex w-full items-center justify-center gap-2 rounded-[14px] bg-[#1B231C] px-5 py-4
+                         text-[15px] font-semibold text-[#EEF0E7] tracking-[-0.01em]">
               <Plus size={17} strokeWidth={2.5} /> Nouvelle location
             </button>
           </div>
@@ -3634,8 +3637,8 @@ function ModuleCagnotte({ onRetour, sessionInitiale, modeInvite }) {
 
   if (!pret) {
     return (
-      <div className="flex min-h-screen items-center justify-center" style={{ background: "#F7F3E8" }}>
-        <Loader2 size={22} className="animate-spin" style={{ color: "#B0A897" }} />
+      <div className="flex min-h-screen items-center justify-center" style={{ background: "#EEF0E7" }}>
+        <Loader2 size={22} className="animate-spin" style={{ color: "#A7AF98" }} />
       </div>
     );
   }
@@ -3643,10 +3646,10 @@ function ModuleCagnotte({ onRetour, sessionInitiale, modeInvite }) {
   if (inviteFin) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-3 px-6 text-center"
-           style={{ background: "#F7F3E8", fontFamily: "'Archivo', system-ui, sans-serif" }}>
-        <Check size={26} style={{ color: "#2E6F5E" }} />
+           style={{ background: "#EEF0E7", fontFamily: "'Archivo', system-ui, sans-serif" }}>
+        <Check size={26} style={{ color: "#A97F2E" }} />
         <p className="text-[17px] font-bold">Cagnotte clôturée</p>
-        <p className="max-w-[280px] text-[13.5px] leading-relaxed" style={{ color: "#8B8578" }}>
+        <p className="max-w-[280px] text-[13.5px] leading-relaxed" style={{ color: "#7C8172" }}>
           Tu peux fermer cette page.
         </p>
       </div>
@@ -3662,7 +3665,7 @@ function ModuleCagnotte({ onRetour, sessionInitiale, modeInvite }) {
 
   return (
     <div className="min-h-screen antialiased"
-         style={{ background: "#F7F3E8", color: "#1C1A17", fontFamily: "'Archivo', system-ui, sans-serif" }}>
+         style={{ background: "#EEF0E7", color: "#1B231C", fontFamily: "'Archivo', system-ui, sans-serif" }}>
       <style>{styles}</style>
       <div className="mx-auto max-w-[430px] px-5 pb-32">
 
@@ -3671,11 +3674,11 @@ function ModuleCagnotte({ onRetour, sessionInitiale, modeInvite }) {
           <>
             <header className="pt-10 pb-8">
               <button onClick={onRetour} className="mb-5 -ml-1 flex items-center gap-1 text-[13px]"
-                style={{ color: "#8B8578" }}>
+                style={{ color: "#7C8172" }}>
                 <ChevronLeft size={16} /> Accueil
               </button>
               <h1 className="text-[34px] font-bold leading-[0.95] tracking-[-0.035em]">Mes cagnottes</h1>
-              <p className="mt-2 text-[13px]" style={{ color: "#8B8578" }}>
+              <p className="mt-2 text-[13px]" style={{ color: "#7C8172" }}>
                 {historique.length === 0
                   ? "Rien pour l'instant."
                   : `${historique.length} ${historique.length > 1 ? "cagnottes gardées" : "cagnotte gardée"}`}
@@ -3684,20 +3687,20 @@ function ModuleCagnotte({ onRetour, sessionInitiale, modeInvite }) {
 
             {historique.length === 0 ? (
               <p className="rounded-[18px] border border-dashed px-6 py-12 text-center text-[13.5px] leading-relaxed"
-                 style={{ borderColor: "#DDD5C4", color: "#8B8578" }}>
+                 style={{ borderColor: "#DCE1D2", color: "#7C8172" }}>
                 Les cagnottes apparaîtront ici.
               </p>
             ) : (
               <ul className="space-y-2.5">
                 {historique.map((h, i) => (
                   <li key={h.jeton} className="monte flex items-center gap-3 rounded-[18px] p-4"
-                      style={{ background: "#fff", boxShadow: "0 0 0 1px #E9E2D2", animationDelay: `${i * 35}ms` }}>
+                      style={{ background: "#fff", boxShadow: "0 0 0 1px #E1E5D6", animationDelay: `${i * 35}ms` }}>
                     <button onClick={() => rouvrir(h)} className="min-w-0 flex-1 text-left">
                       <span className="block truncate text-[15px] font-semibold tracking-[-0.01em]">
                         {h.titre || "Cagnotte"}
                       </span>
                       <span className="mt-0.5 block text-[11.5px]"
-                            style={{ fontFamily: "'Roboto Mono', monospace", color: "#8B8578" }}>
+                            style={{ fontFamily: "'Roboto Mono', monospace", color: "#7C8172" }}>
                         {h.nParticipants} pers.{h.objectif > 0 ? ` · objectif ${fmt(h.objectif)} €` : ""}
                       </span>
                     </button>
@@ -3707,7 +3710,7 @@ function ModuleCagnotte({ onRetour, sessionInitiale, modeInvite }) {
                     </span>
                     <button onClick={() => supprimerHisto(h.jeton)}
                             aria-label={`Supprimer ${h.titre || "cette cagnotte"}`}
-                            className="shrink-0" style={{ color: "#C4BCA9" }}>
+                            className="shrink-0" style={{ color: "#BAC2AB" }}>
                       <Trash2 size={15} />
                     </button>
                   </li>
@@ -3723,13 +3726,13 @@ function ModuleCagnotte({ onRetour, sessionInitiale, modeInvite }) {
             <div className="mb-5 flex items-center justify-between">
               {modeInvite ? <span /> : (
                 <button onClick={() => { allerVersAccueil(); setEcran("historique"); }}
-                  className="-ml-1 flex items-center gap-1 text-[13px]" style={{ color: "#8B8578" }}>
+                  className="-ml-1 flex items-center gap-1 text-[13px]" style={{ color: "#7C8172" }}>
                   <ChevronLeft size={16} /> Mes cagnottes
                 </button>
               )}
               <span className="flex items-center gap-1.5 text-[11px]"
                     style={{ fontFamily: "'Roboto Mono', monospace",
-                             color: sauvegarde === "erreur" ? "#C1362F" : "#B0A897" }}>
+                             color: sauvegarde === "erreur" ? "#C1362F" : "#A7AF98" }}>
                 {sauvegarde === "cours" ? <Loader2 size={12} className="animate-spin" />
                   : sauvegarde === "erreur" ? <AlertCircle size={12} /> : <Check size={12} />}
                 {sauvegarde === "cours" ? "…" : sauvegarde === "erreur" ? "Non enregistré" : "Enregistré"}
@@ -3740,7 +3743,7 @@ function ModuleCagnotte({ onRetour, sessionInitiale, modeInvite }) {
               className="w-full rounded-md bg-transparent -ml-1 px-1 text-[32px] font-bold
                          leading-[0.95] tracking-[-0.035em] focus:outline-none" />
             {!estOrganisateur && (
-              <p className="mt-2 flex items-center gap-1.5 text-[11.5px]" style={{ color: "#8B8578" }}>
+              <p className="mt-2 flex items-center gap-1.5 text-[11.5px]" style={{ color: "#7C8172" }}>
                 <Info size={12} /> Tu vois le total collecté, pas le détail par personne.
               </p>
             )}
@@ -3750,21 +3753,21 @@ function ModuleCagnotte({ onRetour, sessionInitiale, modeInvite }) {
           <div className="mb-6 space-y-2">
             <button onClick={partagerLeLienContributeurs}
               className="monte flex w-full items-center gap-2.5 rounded-[14px] bg-white p-3 text-left
-                         transition-colors hover:bg-[#F5F1E5]"
-              style={{ boxShadow: "0 0 0 1px #E9E2D2" }}>
+                         transition-colors hover:bg-[#EFF1E9]"
+              style={{ boxShadow: "0 0 0 1px #E1E5D6" }}>
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
-                    style={{ background: "#F2EDE0", color: "#8B8578" }}>
+                    style={{ background: "#ECEEE4", color: "#7C8172" }}>
                 <Share2 size={14} />
               </span>
               <span className="min-w-0 flex-1 text-[12.5px] font-medium">Lien à partager au groupe</span>
-              <span className="shrink-0 text-[12px] font-semibold" style={{ color: "#1C1A17" }}>
+              <span className="shrink-0 text-[12px] font-semibold" style={{ color: "#1B231C" }}>
                 {partageContribEtat === "copie" ? "Copié !" : "Partager"}
               </span>
             </button>
             {estOrganisateur && etat.jetonContributeurs && (
               <button onClick={partagerLeLienOrganisateur}
                 className="monte flex w-full items-center gap-2.5 rounded-[14px] p-3 text-left transition-colors
-                           hover:bg-[#F0EADB]"
+                           hover:bg-[#E8EBE0]"
                 style={{ background: "#FBEBE8", boxShadow: "0 0 0 1px #F0D5CF" }}>
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
                       style={{ background: "#F0D5CF", color: "#C1362F" }}>
@@ -3781,21 +3784,21 @@ function ModuleCagnotte({ onRetour, sessionInitiale, modeInvite }) {
           </div>
 
           {/* objectif + progression */}
-          <section className="mb-8 rounded-[18px] p-4" style={{ background: "#fff", boxShadow: "0 0 0 1px #E9E2D2" }}>
+          <section className="mb-8 rounded-[18px] p-4" style={{ background: "#fff", boxShadow: "0 0 0 1px #E1E5D6" }}>
             {estOrganisateur ? (
               <div className="mb-3 flex items-baseline justify-between gap-3">
-                <span className="text-[14px]" style={{ color: "#8B8578" }}>Objectif</span>
+                <span className="text-[14px]" style={{ color: "#7C8172" }}>Objectif</span>
                 <div className="flex shrink-0 items-baseline gap-1">
                   <ChampMontant centimes={objectif} onChange={changerObjectif} aria-label="Montant objectif"
                     className="w-[92px] rounded-md bg-transparent px-1.5 py-1 text-right text-[19px]
                                font-bold tabular-nums focus:outline-none"
                     style={{ fontFamily: "'Roboto Mono', monospace" }} />
-                  <span className="text-[13px] font-medium" style={{ color: "#8B8578" }}>€</span>
+                  <span className="text-[13px] font-medium" style={{ color: "#7C8172" }}>€</span>
                 </div>
               </div>
             ) : objectif > 0 && (
               <div className="mb-3 flex items-baseline justify-between gap-3">
-                <span className="text-[14px]" style={{ color: "#8B8578" }}>Objectif</span>
+                <span className="text-[14px]" style={{ color: "#7C8172" }}>Objectif</span>
                 <span className="text-[19px] font-bold tabular-nums" style={{ fontFamily: "'Roboto Mono', monospace" }}>
                   {fmt(objectif)} €
                 </span>
@@ -3803,29 +3806,29 @@ function ModuleCagnotte({ onRetour, sessionInitiale, modeInvite }) {
             )}
 
             {objectif > 0 && (
-              <div className="mb-3 h-2 overflow-hidden rounded-full" style={{ background: "#F0EADB" }}>
+              <div className="mb-3 h-2 overflow-hidden rounded-full" style={{ background: "#E8EBE0" }}>
                 <div className="h-full rounded-full transition-all"
-                     style={{ width: `${progres * 100}%`, background: progres >= 1 ? "#2E6F5E" : "#C1362F" }} />
+                     style={{ width: `${progres * 100}%`, background: progres >= 1 ? "#A97F2E" : "#1F4B3A" }} />
               </div>
             )}
 
-            <p className="text-[13px] tabular-nums" style={{ fontFamily: "'Roboto Mono', monospace", color: "#8B8578" }}>
+            <p className="text-[13px] tabular-nums" style={{ fontFamily: "'Roboto Mono', monospace", color: "#7C8172" }}>
               {fmt(totalCollecte)} € collectés{objectif > 0 ? ` sur ${fmt(objectif)} €` : ""}
             </p>
 
             {estOrganisateur ? (
               <label className="mt-3 block">
                 <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.14em]"
-                      style={{ fontFamily: "'Roboto Mono', monospace", color: "#8B8578" }}>
+                      style={{ fontFamily: "'Roboto Mono', monospace", color: "#7C8172" }}>
                   Date limite (optionnel)
                 </span>
                 <input type="date" value={dateLimite || ""} onChange={(e) => changerDateLimite(e.target.value)}
                   className="rounded-[10px] px-2.5 py-2 text-[13px] focus:outline-none"
-                  style={{ border: "1px solid #E0D8C7", background: "#FCFAF5",
+                  style={{ border: "1px solid #D7DCCB", background: "#FFFFFF",
                            fontFamily: "'Roboto Mono', monospace" }} />
               </label>
             ) : dateLimite && (
-              <p className="mt-2 text-[12px]" style={{ fontFamily: "'Roboto Mono', monospace", color: "#8B8578" }}>
+              <p className="mt-2 text-[12px]" style={{ fontFamily: "'Roboto Mono', monospace", color: "#7C8172" }}>
                 Avant le {dateCourte(dateLimite)}
               </p>
             )}
@@ -3835,35 +3838,35 @@ function ModuleCagnotte({ onRetour, sessionInitiale, modeInvite }) {
           <section className="mb-8">
             <div className="mb-3.5 flex items-center gap-3">
               <span className="text-[10px] font-bold uppercase tracking-[0.2em]"
-                    style={{ fontFamily: "'Roboto Mono', monospace", color: "#8B8578" }}>Qui participe</span>
-              <span className="h-px flex-1" style={{ background: "#DDD5C4" }} />
+                    style={{ fontFamily: "'Roboto Mono', monospace", color: "#7C8172" }}>Qui participe</span>
+              <span className="h-px flex-1" style={{ background: "#DCE1D2" }} />
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {participants.map((p) => (
                 <span key={p.id} className="flex items-center gap-2 rounded-full bg-white py-1 pl-1 pr-2.5"
-                      style={{ boxShadow: "0 1px 0 #E9E2D2, 0 0 0 1px #E9E2D2" }}>
+                      style={{ boxShadow: "0 1px 0 #E1E5D6, 0 0 0 1px #E1E5D6" }}>
                   <span className="flex h-6 w-6 items-center justify-center rounded-full
-                                   text-[10px] font-bold text-[#F7F3E8]" style={{ background: p.couleur }}>
+                                   text-[10px] font-bold text-[#EEF0E7]" style={{ background: p.couleur }}>
                     {p.nom.slice(0, 2).toUpperCase()}
                   </span>
                   <span className="text-[13.5px] font-medium">
-                    {p.nom}{p.id === moi && <span style={{ color: "#8B8578" }}> (vous)</span>}
+                    {p.nom}{p.id === moi && <span style={{ color: "#7C8172" }}> (vous)</span>}
                   </span>
                   <button onClick={() => retirerParticipant(p.id)} aria-label={`Retirer ${p.nom}`}
-                          className="text-[#C4BCA9] hover:text-[#C1362F] transition-colors">
+                          className="text-[#BAC2AB] hover:text-[#C1362F] transition-colors">
                     <X size={13} strokeWidth={2.5} />
                   </button>
                 </span>
               ))}
-              <span className="flex items-center gap-1 rounded-full border border-dashed border-[#CDC4B0] py-1 pl-3 pr-1">
+              <span className="flex items-center gap-1 rounded-full border border-dashed border-[#C2C9B4] py-1 pl-3 pr-1">
                 <input value={nouveauNom} onChange={(e) => setNouveauNom(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && ajouterNom(nouveauNom)}
                   placeholder="Prénom" enterKeyHint="done"
-                  className="w-[68px] bg-transparent text-[13.5px] placeholder-[#B0A897] focus:outline-none" />
+                  className="w-[68px] bg-transparent text-[13.5px] placeholder-[#A7AF98] focus:outline-none" />
                 <button onClick={() => ajouterNom(nouveauNom)} disabled={!nouveauNom.trim()}
                         aria-label="Ajouter cette personne"
-                        className="flex h-6 w-6 items-center justify-center rounded-full bg-[#1C1A17]
-                                   text-[#F7F3E8] disabled:bg-[#E0D8C7] disabled:text-[#B0A897] transition-colors">
+                        className="flex h-6 w-6 items-center justify-center rounded-full bg-[#1B231C]
+                                   text-[#EEF0E7] disabled:bg-[#D7DCCB] disabled:text-[#A7AF98] transition-colors">
                   <Plus size={13} strokeWidth={2.5} />
                 </button>
               </span>
@@ -3872,23 +3875,23 @@ function ModuleCagnotte({ onRetour, sessionInitiale, modeInvite }) {
 
           {/* contribution */}
           {participants.length > 0 && (
-            <section className="mb-8 rounded-[18px] bg-white p-4" style={{ boxShadow: "0 2px 0 #E9E2D2, 0 0 0 1px #E9E2D2" }}>
+            <section className="mb-8 rounded-[18px] bg-white p-4" style={{ boxShadow: "0 2px 0 #E1E5D6, 0 0 0 1px #E1E5D6" }}>
               <div className="mb-3.5 flex items-center gap-3">
                 <span className="text-[10px] font-bold uppercase tracking-[0.2em]"
-                      style={{ fontFamily: "'Roboto Mono', monospace", color: "#8B8578" }}>
+                      style={{ fontFamily: "'Roboto Mono', monospace", color: "#7C8172" }}>
                   {estOrganisateur ? "Contributions" : "Ma contribution"}
                 </span>
-                <span className="h-px flex-1" style={{ background: "#DDD5C4" }} />
+                <span className="h-px flex-1" style={{ background: "#DCE1D2" }} />
               </div>
 
               {estOrganisateur && etat.versements && etat.versements.length > 0 && (
-                <ul className="mb-3 space-y-1.5 border-b border-dashed pb-3" style={{ borderColor: "#E5DECD" }}>
+                <ul className="mb-3 space-y-1.5 border-b border-dashed pb-3" style={{ borderColor: "#DCE1D1" }}>
                   {etat.versements.map((v) => {
                     const p = participants.find((x) => x.id === v.participantId);
                     return (
                       <li key={v.id} className="flex items-center gap-2.5 text-[13px]">
                         <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full
-                                         text-[9px] font-bold text-[#F7F3E8]" style={{ background: p?.couleur || "#B0A897" }}>
+                                         text-[9px] font-bold text-[#EEF0E7]" style={{ background: p?.couleur || "#A7AF98" }}>
                           {(p?.nom || "?").slice(0, 2).toUpperCase()}
                         </span>
                         <span className="min-w-0 flex-1 truncate">{p?.nom || "?"}</span>
@@ -3896,7 +3899,7 @@ function ModuleCagnotte({ onRetour, sessionInitiale, modeInvite }) {
                           {fmt(v.montant)} €
                         </span>
                         <button onClick={() => supprimerContribution(v.id)} aria-label="Supprimer cette contribution"
-                                style={{ color: "#C4BCA9" }}>
+                                style={{ color: "#BAC2AB" }}>
                           <X size={13} strokeWidth={2.5} />
                         </button>
                       </li>
@@ -3914,14 +3917,14 @@ function ModuleCagnotte({ onRetour, sessionInitiale, modeInvite }) {
               </div>
               <div className="mt-3 flex items-center gap-2">
                 <ChampMontant centimes={montantSaisi} onChange={setMontantSaisi} aria-label="Montant de la contribution"
-                  className="w-[90px] rounded-md bg-[#FCFAF5] px-2 py-1.5 text-right text-[15px]
+                  className="w-[90px] rounded-md bg-[#FFFFFF] px-2 py-1.5 text-right text-[15px]
                              font-bold tabular-nums focus:outline-none"
-                  style={{ border: "1px solid #E0D8C7", fontFamily: "'Roboto Mono', monospace" }} />
-                <span className="text-[13px] font-medium" style={{ color: "#8B8578" }}>€</span>
+                  style={{ border: "1px solid #D7DCCB", fontFamily: "'Roboto Mono', monospace" }} />
+                <span className="text-[13px] font-medium" style={{ color: "#7C8172" }}>€</span>
                 <button onClick={ajouterContribution} disabled={montantSaisi <= 0 || !(contributeurChoisi || moi)}
-                  className="ml-auto flex items-center gap-1.5 rounded-[12px] bg-[#1C1A17] px-4 py-2.5
-                             text-[13px] font-semibold text-[#F7F3E8] disabled:bg-[#E0D8C7]
-                             disabled:text-[#B0A897] transition-colors">
+                  className="ml-auto flex items-center gap-1.5 rounded-[12px] bg-[#1B231C] px-4 py-2.5
+                             text-[13px] font-semibold text-[#EEF0E7] disabled:bg-[#D7DCCB]
+                             disabled:text-[#A7AF98] transition-colors">
                   <Plus size={14} strokeWidth={2.5} /> Ajouter
                 </button>
               </div>
@@ -3930,20 +3933,20 @@ function ModuleCagnotte({ onRetour, sessionInitiale, modeInvite }) {
 
           <button onClick={cloturer}
             className="w-full rounded-[14px] border border-dashed py-3.5 text-[13px] font-semibold
-                       transition-colors hover:border-[#1C1A17] hover:text-[#1C1A17]"
-            style={{ borderColor: "#CDC4B0", color: "#8B8578" }}>
+                       transition-colors hover:border-[#1B231C] hover:text-[#1B231C]"
+            style={{ borderColor: "#C2C9B4", color: "#7C8172" }}>
             Terminer et ranger dans l'historique
           </button>
         </>)}
       </div>
 
       {ecran === "historique" && (
-        <div className="fixed inset-x-0 bottom-0 z-10 border-t bg-[#F7F3E8]/92 backdrop-blur-md"
-             style={{ borderColor: "#E5DECD" }}>
+        <div className="fixed inset-x-0 bottom-0 z-10 border-t bg-[#EEF0E7]/92 backdrop-blur-md"
+             style={{ borderColor: "#DCE1D1" }}>
           <div className="mx-auto max-w-[430px] px-5 pb-6 pt-4">
             <button onClick={nouvelleCagnotte}
-              className="flex w-full items-center justify-center gap-2 rounded-[14px] bg-[#1C1A17] px-5 py-4
-                         text-[15px] font-semibold text-[#F7F3E8] tracking-[-0.01em]">
+              className="flex w-full items-center justify-center gap-2 rounded-[14px] bg-[#1B231C] px-5 py-4
+                         text-[15px] font-semibold text-[#EEF0E7] tracking-[-0.01em]">
               <Plus size={17} strokeWidth={2.5} /> Nouvelle cagnotte
             </button>
           </div>
@@ -3976,7 +3979,7 @@ function Accueil({ onChoisir }) {
       sous: "Au restaurant, article par article",
       detail: "Qui a pris quoi, parts fractionnées, service au prorata.",
       icone: <Utensils size={20} />,
-      teinte: "#C1362F",
+      teinte: "#1F4B3A",
     },
     {
       cle: "location",
@@ -3984,7 +3987,7 @@ function Accueil({ onChoisir }) {
       sous: "Au prorata des nuitées",
       detail: "Dates par personne, suivi des versements, cagnotte commune.",
       icone: <KeyRound size={20} />,
-      teinte: "#2E6F5E",
+      teinte: "#457765",
     },
     {
       cle: "cagnotte",
@@ -3992,21 +3995,21 @@ function Accueil({ onChoisir }) {
       sous: "Un objectif, des contributions libres",
       detail: "Un lien pour l'organisateur, un autre pour le groupe.",
       icone: <Gift size={20} />,
-      teinte: "#B5761F",
+      teinte: "#A97F2E",
     },
   ];
 
   return (
     <div className="min-h-screen antialiased"
-         style={{ background: "#F7F3E8", color: "#1C1A17",
+         style={{ background: "#EEF0E7", color: "#1B231C",
                   fontFamily: "'Archivo', system-ui, sans-serif" }}>
       <style>{stylesGlobaux}</style>
       <div className="mx-auto max-w-[430px] px-5 pb-16">
         <header className="pt-16 pb-9">
           <h1 className="text-[38px] font-bold leading-[0.92] tracking-[-0.04em]">
-            Partage
+            ShareApp
           </h1>
-          <p className="mt-3 text-[13.5px] leading-relaxed" style={{ color: "#8B8578" }}>
+          <p className="mt-3 text-[13.5px] leading-relaxed" style={{ color: "#7C8172" }}>
             Deux calculs, deux façons de partager.
             Personne n'a besoin d'installer quoi que ce soit.
           </p>
@@ -4017,10 +4020,10 @@ function Accueil({ onChoisir }) {
             <button key={c.cle} onClick={() => onChoisir(c.cle)}
               className="monte group flex w-full items-start gap-4 rounded-[20px] p-5 text-left
                          transition-transform active:scale-[.99]"
-              style={{ background: "#fff", boxShadow: "0 2px 0 #E9E2D2, 0 0 0 1px #E9E2D2",
+              style={{ background: "#fff", boxShadow: "0 2px 0 #E1E5D6, 0 0 0 1px #E1E5D6",
                        animationDelay: `${i * 70}ms` }}>
               <span className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px]"
-                    style={{ background: c.teinte, color: "#F7F3E8" }}>
+                    style={{ background: c.teinte, color: "#EEF0E7" }}>
                 {c.icone}
               </span>
               <span className="min-w-0 flex-1">
@@ -4029,18 +4032,18 @@ function Accueil({ onChoisir }) {
                       style={{ fontFamily: "'Roboto Mono', monospace", color: c.teinte }}>
                   {c.sous}
                 </span>
-                <span className="mt-2 block text-[12.5px] leading-relaxed" style={{ color: "#8B8578" }}>
+                <span className="mt-2 block text-[12.5px] leading-relaxed" style={{ color: "#7C8172" }}>
                   {c.detail}
                 </span>
               </span>
               <ArrowRight size={17} className="mt-1 shrink-0 transition-transform
                                                group-hover:translate-x-0.5"
-                          style={{ color: "#C4BCA9" }} />
+                          style={{ color: "#BAC2AB" }} />
             </button>
           ))}
         </div>
 
-        <p className="mt-8 text-center text-[11.5px] leading-relaxed" style={{ color: "#B0A897" }}>
+        <p className="mt-8 text-center text-[11.5px] leading-relaxed" style={{ color: "#A7AF98" }}>
           Chaque module garde ses données de son côté.
           Vous pouvez passer de l'un à l'autre sans rien perdre.
         </p>
@@ -4095,8 +4098,8 @@ export default function Partage() {
 
   if (!pret) {
     return (
-      <div className="flex min-h-screen items-center justify-center" style={{ background: "#F7F3E8" }}>
-        <Loader2 size={22} className="animate-spin" style={{ color: "#B0A897" }} />
+      <div className="flex min-h-screen items-center justify-center" style={{ background: "#EEF0E7" }}>
+        <Loader2 size={22} className="animate-spin" style={{ color: "#A7AF98" }} />
       </div>
     );
   }
@@ -4104,14 +4107,14 @@ export default function Partage() {
   if (introuvable) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 px-6 text-center"
-           style={{ background: "#F7F3E8", color: "#1C1A17",
+           style={{ background: "#EEF0E7", color: "#1B231C",
                     fontFamily: "'Archivo', system-ui, sans-serif" }}>
         <p className="text-[17px] font-bold">Ce lien ne mène à rien</p>
-        <p className="text-[13.5px] leading-relaxed" style={{ color: "#8B8578" }}>
+        <p className="text-[13.5px] leading-relaxed" style={{ color: "#7C8172" }}>
           La session a peut-être été supprimée, ou le lien est incomplet.
         </p>
         <button onClick={retour}
-          className="mt-2 rounded-[12px] bg-[#1C1A17] px-5 py-3 text-[14px] font-semibold text-[#F7F3E8]">
+          className="mt-2 rounded-[12px] bg-[#1B231C] px-5 py-3 text-[14px] font-semibold text-[#EEF0E7]">
           Retour à l'accueil
         </button>
       </div>

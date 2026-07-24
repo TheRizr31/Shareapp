@@ -1,12 +1,12 @@
 {
-  "name": "Partage — addition et location",
-  "short_name": "Partage",
+  "name": "ShareApp — addition, location et cagnotte",
+  "short_name": "ShareApp",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#F7F3E8",
-  "theme_color": "#F7F3E8",
+  "background_color": "#EEF0E7",
+  "theme_color": "#EEF0E7",
   "lang": "fr",
   "icons": [
     { "src": "/icone.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
