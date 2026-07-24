@@ -1,0 +1,8 @@
+name = "partage"
+pages_build_output_dir = "dist"
+compatibility_date = "2024-11-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "partage"
+database_id = "bebec946-08e7-4e28-845f-995e6baa48ad"

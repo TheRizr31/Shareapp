@@ -4,6 +4,10 @@ import {
   AlertCircle, Receipt, Download, Share2, Check, Loader2, Image as ImageIcon,
   CalendarDays, Wallet, Users, Info, Home, Utensils, KeyRound,
 } from "lucide-react";
+import {
+  appeler, creerFile, lireJSON, ecrireJSON, majIndex, retirerIndex,
+  jetonDeLURL, allerVersSession, allerVersAccueil,
+} from "./api.js";
 
 /* ==================================================================== */
 /*  Partage — deux modules sous une même enveloppe.                     */
@@ -30,7 +34,6 @@ const COULEURS = [
   "#8E4576", "#5C7A2E", "#A8523A", "#456B7D",
 ];
 
-const CLE_ETAT = "addition:encours";
 const CLE_HISTO = "addition:historique";
 const CLE_NOMS = "addition:noms";
 
@@ -137,6 +140,15 @@ const texteFraction = ([n, d]) => (d === 1 ? String(n) : `${n}/${d}`);
  * Le reliquat d'arrondi va aux plus fortes décimales ; `graine` fait tourner
  * l'attribution d'une ligne à l'autre.
  */
+/** Convertit une graine quelconque (entier local ou uuid serveur) en entier stable. */
+function graineNumerique(valeur) {
+  if (typeof valeur === "number" && Number.isFinite(valeur)) return valeur;
+  const s = String(valeur);
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return h;
+}
+
 function repartirFractions(centimes, fractions, graine = 0) {
   const total = sommeFractions(fractions);
   if (total[0] <= 0) return fractions.map(() => 0);
@@ -149,7 +161,7 @@ function repartirFractions(centimes, fractions, graine = 0) {
     .map((v, i) => ({ i, frac: v - Math.floor(v) }))
     .sort((a, b) => b.frac - a.frac || a.i - b.i);
 
-  const depart = fractions.length ? graine % fractions.length : 0;
+  const depart = fractions.length ? graineNumerique(graine) % fractions.length : 0;
   for (let k = 0; k < reste; k++) planchers[ordre[(k + depart) % ordre.length].i]++;
 
   return planchers;
@@ -592,14 +604,52 @@ const etatVierge = () => ({
   lignes: [],
   extras: { service: 0, mode: "prorata" },
   totalAttendu: 0,     // ce qu'affiche le ticket ; 0 = non renseigné
-  prochainId: 1000,
 });
 
-function ModuleAddition({ onRetour }) {
-  const [pret, setPret] = useState(false);
-  const [ecran, setEcran] = useState("historique");
-  const [etat, setEtat] = useState(etatVierge);
-  const [historique, setHistorique] = useState([]);
+/** Convertit la réponse de l'API (lignes normalisées) vers l'état local. */
+function versEtatLocal(session) {
+  return {
+    titre: session.titre || "",
+    date: session.modifieLe ? new Date(session.modifieLe).toISOString() : new Date().toISOString(),
+    participants: session.participants.map((p) => ({ id: p.id, nom: p.nom, couleur: p.couleur })),
+    lignes: session.articles.map((a) => ({
+      id: a.id,
+      libelle: a.libelle,
+      montant: a.montant,
+      quantite: a.quantite,
+      reglee: !!a.reglee,
+      participantIds: a.parts.map((p) => p.participantId),
+      parts: a.parts.length
+        ? Object.fromEntries(a.parts.map((p) => [p.participantId, [p.numerateur, p.denominateur]]))
+        : undefined,
+    })),
+    extras: { service: session.service ?? 0, mode: session.modeService ?? "prorata" },
+    totalAttendu: session.totalAttendu ?? 0,
+    clotureeLe: session.clotureeLe ?? null,
+  };
+}
+
+/**
+ * Les parts à pousser sur le serveur pour un article : toujours une valeur
+ * par participant inclus, jamais une absence — [1,1] partout normalise à un
+ * partage égal, tout comme [1,3] partout : seul le ratio entre les parts
+ * compte dans repartirFractions(). Une seule règle couvre donc le partage
+ * égal automatique, les fractions choisies à la main et l'attribution du
+ * reste.
+ */
+function partsAPousser(ligne) {
+  return ligne.participantIds.map((id) => {
+    const [n, d] = fractionDe(ligne, id);
+    return { participantId: id, numerateur: n, denominateur: d };
+  });
+}
+
+function ModuleAddition({ onRetour, sessionInitiale }) {
+  const [pret, setPret] = useState(!!sessionInitiale);
+  const [ecran, setEcran] = useState(sessionInitiale ? "saisie" : "historique");
+  const [jeton, setJeton] = useState(sessionInitiale?.jeton ?? null);
+  const [etat, setEtat] = useState(() => (sessionInitiale ? versEtatLocal(sessionInitiale) : etatVierge()));
+  const [historique, setHistorique] = useState([]); // index local (localStorage) des additions déjà ouvertes ici
   const [nomsConnus, setNomsConnus] = useState([]);
 
   const [nouveauNom, setNouveauNom] = useState("");
@@ -617,99 +667,82 @@ function ModuleAddition({ onRetour }) {
   const [sauvegarde, setSauvegarde] = useState("repos"); // repos | cours | ok | erreur
 
   const refLibelle = useRef(null);
-  const premierRendu = useRef(true);
-  const secours = useRef({});
+  const [{ executer, differe }] = useState(() => creerFile(setSauvegarde));
 
   const { participants, lignes, extras } = etat;
 
-  /* --- chargement initial --- */
+  /* --- chargement initial : soit une session précise (lien partagé),   --- */
+  /* --- soit l'écran d'accueil du module (liste des additions connues). --- */
   useEffect(() => {
-    (async () => {
-      const lire = async (cle, defaut) => {
-        try {
-          const r = await window.storage?.get(cle);
-          if (r?.value) return JSON.parse(r.value);
-        } catch { /* clé absente ou stockage indisponible */ }
-        try {
-          if (secours.current[cle]) return JSON.parse(secours.current[cle]);
-        } catch { /* secours illisible */ }
-        return defaut;
-      };
-      const [e, h, n] = await Promise.all([
-        lire(CLE_ETAT, null),
-        lire(CLE_HISTO, []),
-        lire(CLE_NOMS, []),
-      ]);
-      setHistorique(Array.isArray(h) ? h : []);
-      setNomsConnus(Array.isArray(n) ? n : []);
-      if (e && e.lignes) {
-        setEtat(e);
-        setEcran("saisie");
-      } else if (Array.isArray(h) && h.length === 0) {
-        setEcran("saisie");
-        setEtat({ ...etatVierge(), participants: [] });
-      }
+    if (sessionInitiale) return; // déjà chargé synchroniquement à l'init de l'état
+    setNomsConnus(lireJSON(CLE_NOMS, []));
+    const h = lireJSON(CLE_HISTO, []);
+    setHistorique(h);
+    if (h.length === 0) {
+      creerSession().then(() => setEcran("saisie")).finally(() => setPret(true));
+    } else {
       setPret(true);
-    })();
-  }, []);
-
-  /**
-   * Écritures sérialisées : deux sauvegardes simultanées déclenchent la
-   * limitation de débit du stockage. On enfile, on écrit une par une.
-   */
-  const file = useRef(Promise.resolve());
-
-  const ecrire = useCallback((cle, valeur) => {
-    const texte = JSON.stringify(valeur);
-    secours.current[cle] = texte;
-
-    if (!window.storage?.set) {
-      setSauvegarde("local");
-      return Promise.resolve(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionInitiale]);
 
-    const tache = file.current.then(async () => {
-      setSauvegarde("cours");
-      for (let essai = 0; essai < 3; essai++) {
-        try {
-          const r = await window.storage.set(cle, texte);
-          if (!r) throw new Error("écriture refusée");
-          setSauvegarde("ok");
-          return true;
-        } catch (err) {
-          if (essai < 2) {
-            await new Promise((r) => setTimeout(r, 500 * (essai + 1)));
-            continue;
-          }
-          console.error("Sauvegarde impossible:", cle, err);
-          setSauvegarde("erreur");
-          return false;
-        }
-      }
-      return false;
-    });
+  /* --- crée la session dès qu'on entre en saisie sans en avoir une --- */
+  const creerSession = async () => {
+    const { jeton: nouveau } = await appeler("creer", { type: "addition" });
+    setJeton(nouveau);
+    allerVersSession(nouveau);
+    setHistorique(majIndex(CLE_HISTO, nouveau, {
+      titre: "", modifieLe: Date.now(), nParticipants: 0, nLignes: 0, total: 0, cloturee: null,
+    }));
+    return nouveau;
+  };
 
-    // la file continue même si une écriture échoue
-    file.current = tache.catch(() => {});
-    return tache;
-  }, []);
-
-  /* --- sauvegarde de l'addition en cours --- */
+  /** Tient à jour le résumé affiché dans "Mes additions", sur cet appareil. */
   useEffect(() => {
-    if (!pret) return;
-    if (premierRendu.current) { premierRendu.current = false; return; }
-    const t = setTimeout(() => { ecrire(CLE_ETAT, etat); }, 900);
-    return () => clearTimeout(t);
-  }, [etat, pret, ecrire]);
+    if (!pret || !jeton) return;
+    setHistorique(majIndex(CLE_HISTO, jeton, {
+      titre: titreAuto(), modifieLe: Date.now(),
+      nParticipants: participants.length, nLignes: lignes.length,
+      total: calculer(participants, lignes, extras).total,
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pret, jeton, etat.titre, participants.length, lignes.length]);
 
-  /* --- sauvegarde différée de la liste des prénoms --- */
+  /* --- sauvegarde différée de la liste des prénoms (propre à l'appareil) --- */
   useEffect(() => {
     if (!pret || nomsConnus.length === 0) return;
-    const t = setTimeout(() => { ecrire(CLE_NOMS, nomsConnus); }, 1200);
-    return () => clearTimeout(t);
-  }, [nomsConnus, pret, ecrire]);
+    ecrireJSON(CLE_NOMS, nomsConnus);
+  }, [nomsConnus, pret]);
 
   const majEtat = useCallback((f) => setEtat((e) => ({ ...e, ...f(e) })), []);
+
+  const synchroniserParts = (ligneCourante) => {
+    if (!jeton) return;
+    executer(() => appeler("definir-parts", {
+      jeton, articleId: ligneCourante.id, parts: partsAPousser(ligneCourante),
+    })).catch(() => {});
+  };
+
+  const changerTitre = (valeur) => {
+    majEtat(() => ({ titre: valeur }));
+    if (jeton) differe("session:titre", () => appeler("maj-session", { jeton, champs: { titre: valeur } }));
+  };
+
+  const changerTotalAttendu = (centimes) => {
+    majEtat(() => ({ totalAttendu: centimes }));
+    if (jeton) differe("session:totalAttendu", () => appeler("maj-session", { jeton, champs: { totalAttendu: centimes } }));
+  };
+
+  const changerService = (centimes) => {
+    majEtat((e) => ({ extras: { ...e.extras, service: centimes } }));
+    if (jeton) differe("session:service", () => appeler("maj-session", { jeton, champs: { service: centimes } }));
+  };
+
+  const changerModeService = (mode) => {
+    majEtat((e) => ({ extras: { ...e.extras, mode } }));
+    if (jeton) executer(() => appeler("maj-session", { jeton, champs: { modeService: mode } })).catch(() => {});
+  };
+
   const lignesAffichees = useMemo(() => {
     if (tri === "saisie") return lignes;
     const copie = [...lignes];
@@ -737,24 +770,20 @@ function ModuleAddition({ onRetour }) {
   const ecartTotal = (etat.totalAttendu ?? 0) > 0 ? calcul.total - etat.totalAttendu : 0;
 
   /* --- participants --- */
-  const ajouterNom = (nom) => {
+  const ajouterNom = async (nom) => {
     const n = nom.trim();
-    if (!n) return;
+    if (!n || !jeton) return;
     if (participants.some((p) => p.nom.toLowerCase() === n.toLowerCase())) return;
-    majEtat((e) => ({
-      participants: [
-        ...e.participants,
-        { id: e.prochainId + 1, nom: n, couleur: COULEURS[e.participants.length % COULEURS.length] },
-      ],
-      prochainId: e.prochainId + 1,
-    }));
-    setNomsConnus((ns) =>
-      [n, ...ns.filter((x) => x.toLowerCase() !== n.toLowerCase())].slice(0, 12)
-    );
+    const couleur = COULEURS[participants.length % COULEURS.length];
     setNouveauNom("");
+    try {
+      const { id } = await executer(() => appeler("ajouter-participant", { jeton, nom: n, couleur }));
+      majEtat((e) => ({ participants: [...e.participants, { id, nom: n, couleur }] }));
+      setNomsConnus((ns) => [n, ...ns.filter((x) => x.toLowerCase() !== n.toLowerCase())].slice(0, 12));
+    } catch (e) { console.error(e); }
   };
 
-  const retirerParticipant = (id) =>
+  const retirerParticipant = (id) => {
     majEtat((e) => ({
       participants: e.participants.filter((x) => x.id !== id),
       lignes: e.lignes.map((l) => {
@@ -768,105 +797,127 @@ function ModuleAddition({ onRetour }) {
         };
       }),
     }));
-
-  /* --- lignes --- */
-  const ajouterLigne = () => {
-    const c = enCentimes(montant);
-    if (c <= 0) return;
-    majEtat((e) => ({
-      lignes: [
-        ...e.lignes,
-        (() => {
-          const base = {
-            id: e.prochainId + 1,
-            libelle: libelle.trim() || "Article",
-            montant: c, quantite,
-            participantIds: [...selection],
-          };
-          return { ...base, parts: partsEquilibrees(base, base.participantIds) };
-        })(),
-      ],
-      prochainId: e.prochainId + 1,
-    }));
-    setLibelle(""); setMontant(""); setQuantite(1); setSelection([]);
-    refLibelle.current?.focus();
+    if (jeton) executer(() => appeler("supprimer-participant", { jeton, id })).catch(() => {});
   };
 
-  const modifierLigne = (id, champ, valeur) =>
+  /* --- lignes --- */
+  const ajouterLigne = async () => {
+    const c = enCentimes(montant);
+    if (c <= 0 || !jeton) return;
+    const base = { libelle: libelle.trim() || "Article", montant: c, quantite, participantIds: [...selection] };
+    const brouillon = { ...base, parts: partsEquilibrees(base, base.participantIds) };
+    setLibelle(""); setMontant(""); setQuantite(1); setSelection([]);
+    refLibelle.current?.focus();
+    try {
+      const { id } = await executer(() => appeler("ajouter-article", {
+        jeton, libelle: brouillon.libelle, montant: brouillon.montant, quantite: brouillon.quantite,
+        parts: partsAPousser(brouillon),
+      }));
+      majEtat((e) => ({ lignes: [...e.lignes, { ...brouillon, id }] }));
+    } catch (e) { console.error(e); }
+  };
+
+  const modifierLigne = (id, champ, valeur) => {
     majEtat((e) => ({ lignes: e.lignes.map((l) => (l.id !== id ? l : { ...l, [champ]: valeur })) }));
+    if (jeton) differe(`article:${id}:${champ}`, () => appeler("maj-article", { jeton, id, champs: { [champ]: valeur } }));
+  };
 
-  const changerQuantite = (id, d) =>
-    majEtat((e) => ({
-      lignes: e.lignes.map((l) => {
-        if (l.id !== id) return l;
-        const suite = { ...l, quantite: Math.max(1, Math.min(99, (l.quantite ?? 1) + d)) };
-        return { ...suite, parts: partsEquilibrees(suite, suite.participantIds), reglee: false };
-      }),
-    }));
+  const changerQuantite = (id, d) => {
+    const l = lignes.find((x) => x.id === id);
+    if (!l) return;
+    const suite = { ...l, quantite: Math.max(1, Math.min(99, (l.quantite ?? 1) + d)) };
+    const suivante = { ...suite, parts: partsEquilibrees(suite, suite.participantIds), reglee: false };
+    majEtat((e) => ({ lignes: e.lignes.map((x) => (x.id === id ? suivante : x)) }));
+    if (!jeton) return;
+    executer(() => appeler("maj-article", { jeton, id, champs: { quantite: suivante.quantite, reglee: false } })).catch(() => {});
+    synchroniserParts(suivante);
+  };
 
-  const dupliquerLigne = (id) =>
-    majEtat((e) => {
-      const i = e.lignes.findIndex((l) => l.id === id);
-      if (i === -1) return {};
-      const copie = { ...e.lignes[i], id: e.prochainId + 1,
-        participantIds: [...e.lignes[i].participantIds],
-        parts: e.lignes[i].parts ? { ...e.lignes[i].parts } : undefined };
-      return {
-        lignes: [...e.lignes.slice(0, i + 1), copie, ...e.lignes.slice(i + 1)],
-        prochainId: e.prochainId + 1,
-      };
-    });
+  const dupliquerLigne = async (id) => {
+    const l = lignes.find((x) => x.id === id);
+    if (!l || !jeton) return;
+    const brouillon = {
+      libelle: l.libelle, montant: l.montant, quantite: l.quantite,
+      participantIds: [...l.participantIds], parts: l.parts ? { ...l.parts } : undefined,
+    };
+    try {
+      const { id: nouvelId } = await executer(() => appeler("ajouter-article", {
+        jeton, libelle: brouillon.libelle, montant: brouillon.montant, quantite: brouillon.quantite,
+        parts: partsAPousser(brouillon),
+      }));
+      majEtat((e) => {
+        const i = e.lignes.findIndex((x) => x.id === id);
+        const copie = { ...brouillon, id: nouvelId };
+        return i === -1
+          ? { lignes: [...e.lignes, copie] }
+          : { lignes: [...e.lignes.slice(0, i + 1), copie, ...e.lignes.slice(i + 1)] };
+      });
+    } catch (e) { console.error(e); }
+  };
 
-  const supprimerLigne = (id) =>
+  const supprimerLigne = (id) => {
     majEtat((e) => ({ lignes: e.lignes.filter((l) => l.id !== id) }));
+    if (jeton) executer(() => appeler("supprimer-article", { jeton, id })).catch(() => {});
+  };
 
-  const basculer = (ligneId, pid) =>
-    majEtat((e) => ({
-      lignes: e.lignes.map((l) => {
-        if (l.id !== ligneId) return l;
-        const ids = l.participantIds.includes(pid)
-          ? l.participantIds.filter((x) => x !== pid)
-          : [...l.participantIds, pid];
-        return { ...l, participantIds: ids, parts: partsEquilibrees(l, ids), reglee: false };
-      }),
-    }));
+  const basculer = (ligneId, pid) => {
+    const l = lignes.find((x) => x.id === ligneId);
+    if (!l) return;
+    const ids = l.participantIds.includes(pid)
+      ? l.participantIds.filter((x) => x !== pid)
+      : [...l.participantIds, pid];
+    const suivante = { ...l, participantIds: ids, parts: partsEquilibrees(l, ids), reglee: false };
+    majEtat((e) => ({ lignes: e.lignes.map((x) => (x.id === ligneId ? suivante : x)) }));
+    if (!jeton) return;
+    executer(() => appeler("maj-article", { jeton, id: ligneId, champs: { reglee: false } })).catch(() => {});
+    synchroniserParts(suivante);
+  };
 
-  const changerFraction = (ligneId, pid, fraction) =>
-    majEtat((e) => ({
-      lignes: e.lignes.map((l) => {
-        if (l.id !== ligneId) return l;
-        const parts = { ...(l.parts || {}) };
-        parts[pid] = fraction;
-        return { ...l, parts, reglee: true };
-      }),
-    }));
+  const changerFraction = (ligneId, pid, fraction) => {
+    const l = lignes.find((x) => x.id === ligneId);
+    if (!l) return;
+    const parts = { ...(l.parts || {}) };
+    parts[pid] = fraction;
+    const suivante = { ...l, parts, reglee: true };
+    majEtat((e) => ({ lignes: e.lignes.map((x) => (x.id === ligneId ? suivante : x)) }));
+    if (!jeton) return;
+    executer(() => appeler("maj-article", { jeton, id: ligneId, champs: { reglee: true } })).catch(() => {});
+    synchroniserParts(suivante);
+  };
 
   const validerReste = () => {
     if (!resteLigne || resteLigne.designes.length === 0) return;
-    majEtat((e) => ({
-      lignes: e.lignes.map((l) =>
-        l.id !== resteLigne.ligneId ? l : { ...l, parts: attribuerReste(l, resteLigne.designes), reglee: true }),
-    }));
+    const l = lignes.find((x) => x.id === resteLigne.ligneId);
+    if (!l) return;
+    const suivante = { ...l, parts: attribuerReste(l, resteLigne.designes), reglee: true };
+    majEtat((e) => ({ lignes: e.lignes.map((x) => (x.id === resteLigne.ligneId ? suivante : x)) }));
     setResteLigne(null);
+    if (!jeton) return;
+    executer(() => appeler("maj-article", { jeton, id: resteLigne.ligneId, champs: { reglee: true } })).catch(() => {});
+    synchroniserParts(suivante);
   };
 
   /** Remet la ligne en partage égal. */
-  const equilibrer = (ligneId) =>
-    majEtat((e) => ({
-      lignes: e.lignes.map((l) =>
-        l.id !== ligneId || l.participantIds.length === 0
-          ? l
-          : { ...l, parts: partsEquilibrees(l, l.participantIds), reglee: false }),
-    }));
+  const equilibrer = (ligneId) => {
+    const l = lignes.find((x) => x.id === ligneId);
+    if (!l || l.participantIds.length === 0) return;
+    const suivante = { ...l, parts: partsEquilibrees(l, l.participantIds), reglee: false };
+    majEtat((e) => ({ lignes: e.lignes.map((x) => (x.id === ligneId ? suivante : x)) }));
+    if (!jeton) return;
+    executer(() => appeler("maj-article", { jeton, id: ligneId, champs: { reglee: false } })).catch(() => {});
+    synchroniserParts(suivante);
+  };
 
-  const tousOuAucun = (ligneId, tous) =>
-    majEtat((e) => ({
-      lignes: e.lignes.map((l) => {
-        if (l.id !== ligneId) return l;
-        const ids = tous ? e.participants.map((p) => p.id) : [];
-        return { ...l, participantIds: ids, parts: partsEquilibrees(l, ids), reglee: false };
-      }),
-    }));
+  const tousOuAucun = (ligneId, tous) => {
+    const l = lignes.find((x) => x.id === ligneId);
+    if (!l) return;
+    const ids = tous ? participants.map((p) => p.id) : [];
+    const suivante = { ...l, participantIds: ids, parts: partsEquilibrees(l, ids), reglee: false };
+    majEtat((e) => ({ lignes: e.lignes.map((x) => (x.id === ligneId ? suivante : x)) }));
+    if (!jeton) return;
+    executer(() => appeler("maj-article", { jeton, id: ligneId, champs: { reglee: false } })).catch(() => {});
+    synchroniserParts(suivante);
+  };
 
   /* --- historique --- */
   const titreAuto = () =>
@@ -874,41 +925,58 @@ function ModuleAddition({ onRetour }) {
     `Addition du ${new Date(etat.date).toLocaleDateString("fr-FR", { day: "numeric", month: "long" })}`;
 
   const cloturer = async () => {
-    const entree = { ...etat, titre: titreAuto(), cloturee: new Date().toISOString(), total: calcul.total };
-    const suite = [entree, ...historique].slice(0, 50);
-    setHistorique(suite);
-    await ecrire(CLE_HISTO, suite);
-    const vierge = { ...etatVierge(), prochainId: etat.prochainId + 100 };
-    setEtat(vierge);
-    await ecrire(CLE_ETAT, vierge);
+    if (jeton) {
+      try { await executer(() => appeler("maj-session", { jeton, champs: { titre: titreAuto(), cloturee: true } })); }
+      catch (e) { console.error(e); }
+    }
     setDeplie([]);
+    setJeton(null);
+    setEtat(etatVierge());
+    allerVersAccueil();
     setEcran("historique");
   };
 
-  const rouvrir = (entree) => {
-    setEtat({ ...entree });
-    setDeplie([]);
-    setEcran("saisie");
+  const rouvrir = async (entree) => {
+    try {
+      const session = await appeler("lire", { jeton: entree.jeton });
+      setJeton(session.jeton);
+      setEtat(versEtatLocal(session));
+      allerVersSession(session.jeton);
+      setDeplie([]);
+      setEcran("saisie");
+      if (session.clotureeLe) {
+        executer(() => appeler("maj-session", { jeton: session.jeton, champs: { cloturee: false } })).catch(() => {});
+      }
+    } catch (e) {
+      console.error(e);
+      setHistorique(retirerIndex(CLE_HISTO, entree.jeton));
+    }
   };
 
-  const supprimerHisto = async (dateISO) => {
-    const suite = historique.filter((h) => h.cloturee !== dateISO);
-    setHistorique(suite);
-    await ecrire(CLE_HISTO, suite);
+  const supprimerHisto = async (jetonASupprimer) => {
+    setHistorique(retirerIndex(CLE_HISTO, jetonASupprimer));
+    try { await appeler("supprimer-session", { jeton: jetonASupprimer }); } catch (e) { console.error(e); }
   };
 
   const abandonner = async () => {
-    const vierge = { ...etatVierge(), prochainId: etat.prochainId + 100 };
-    setEtat(vierge);
-    await ecrire(CLE_ETAT, vierge);
+    if (jeton) {
+      try { await appeler("supprimer-session", { jeton }); } catch (e) { console.error(e); }
+      setHistorique(retirerIndex(CLE_HISTO, jeton));
+    }
+    setJeton(null);
+    setEtat(etatVierge());
+    allerVersAccueil();
     setDeplie([]); setImage(null); setConfirmation(null);
     setEcran("historique");
   };
 
-  const nouvelleAddition = () => {
-    setEtat({ ...etatVierge(), prochainId: etat.prochainId + 100 });
-    setDeplie([]);
-    setEcran("saisie");
+  const nouvelleAddition = async () => {
+    try {
+      await creerSession();
+      setEtat(etatVierge());
+      setDeplie([]);
+      setEcran("saisie");
+    } catch (e) { console.error(e); }
   };
 
   /* --- export --- */
@@ -1047,24 +1115,24 @@ function ModuleAddition({ onRetour }) {
             ) : (
               <ul className="space-y-2.5">
                 {historique.map((h, i) => (
-                  <li key={h.cloturee}
+                  <li key={h.jeton}
                       className="monte flex items-center gap-3 rounded-[18px] bg-white p-4
                                  shadow-[0_0_0_1px_#E9E2D2]"
                       style={{ animationDelay: `${i * 35}ms` }}>
                     <button onClick={() => rouvrir(h)} className="min-w-0 flex-1 text-left">
                       <span className="block truncate text-[15px] font-semibold tracking-[-0.01em]">
-                        {h.titre}
+                        {h.titre || "Addition"}
                       </span>
                       <span className="mt-0.5 block text-[11.5px] text-[#8B8578]"
                             style={{ fontFamily: "'Roboto Mono', monospace" }}>
-                        {dateCourte(h.cloturee)} · {h.participants.length} pers. · {h.lignes.length} art.
+                        {dateCourte(h.modifieLe)} · {h.nParticipants} pers. · {h.nLignes} art.
                       </span>
                     </button>
                     <span className="shrink-0 text-[17px] font-bold tabular-nums"
                           style={{ fontFamily: "'Roboto Mono', monospace" }}>
                       {fmt(h.total)} €
                     </span>
-                    <button onClick={() => supprimerHisto(h.cloturee)}
+                    <button onClick={() => supprimerHisto(h.jeton)}
                             aria-label={`Supprimer ${h.titre}`}
                             className="shrink-0 text-[#C4BCA9] hover:text-[#C1362F] transition-colors">
                       <Trash2 size={15} />
@@ -1081,22 +1149,21 @@ function ModuleAddition({ onRetour }) {
           <>
             <header className="pt-10 pb-8">
               <div className="mb-5 flex items-center justify-between">
-                <button onClick={() => setEcran("historique")}
+                <button onClick={() => { allerVersAccueil(); setEcran("historique"); }}
                   className="-ml-1 flex items-center gap-1 text-[13px] text-[#8B8578]
                              hover:text-[#1C1A17] transition-colors">
                   <ChevronLeft size={16} /> Mes additions
                 </button>
                 <span className="flex items-center gap-3">
                   <span className={`flex items-center gap-1.5 text-[11px] transition-colors ${
-                          sauvegarde === "erreur" ? "text-[#C1362F]"
-                          : sauvegarde === "local" ? "text-[#B5761F]" : "text-[#B0A897]"}`}
+                          sauvegarde === "erreur" ? "text-[#C1362F]" : "text-[#B0A897]"}`}
                         style={{ fontFamily: "'Roboto Mono', monospace" }}>
                     {sauvegarde === "cours" ? <Loader2 size={12} className="animate-spin" />
-                      : sauvegarde === "erreur" || sauvegarde === "local" ? <AlertCircle size={12} />
+                      : sauvegarde === "erreur" ? <AlertCircle size={12} />
                       : <Check size={12} />}
                     {sauvegarde === "cours" ? "…"
                       : sauvegarde === "erreur" ? "Non enregistré"
-                      : sauvegarde === "local" ? "Session seule" : "Enregistré"}
+                      : "Enregistré"}
                   </span>
                   {(lignes.length > 0 || participants.length > 0) && (
                     <button onClick={() => setConfirmation("abandon")}
@@ -1109,7 +1176,7 @@ function ModuleAddition({ onRetour }) {
               <div className="flex items-end justify-between gap-4">
                 <input
                   value={etat.titre}
-                  onChange={(e) => majEtat(() => ({ titre: e.target.value }))}
+                  onChange={(e) => changerTitre(e.target.value)}
                   placeholder="L'addition"
                   aria-label="Nom de l'addition"
                   className="min-w-0 flex-1 rounded-md bg-transparent -ml-1 px-1 text-[34px] font-bold
@@ -1208,7 +1275,7 @@ function ModuleAddition({ onRetour }) {
                     <div className="flex shrink-0 items-baseline gap-1">
                       <ChampMontant
                         centimes={etat.totalAttendu ?? 0}
-                        onChange={(c) => majEtat(() => ({ totalAttendu: c }))}
+                        onChange={changerTotalAttendu}
                         aria-label="Total inscrit sur l'addition"
                         className="w-[78px] rounded-md bg-transparent px-1.5 py-1 text-right text-[17px]
                                    font-bold tabular-nums hover:bg-[#F5F1E5] focus:bg-[#F5F1E5]
@@ -1485,7 +1552,7 @@ function ModuleAddition({ onRetour }) {
                     <span className="text-[15px] font-medium">Service</span>
                     <div className="flex items-baseline gap-1">
                       <ChampMontant centimes={extras.service}
-                        onChange={(c) => majEtat((e) => ({ extras: { ...e.extras, service: c } }))}
+                        onChange={changerService}
                         aria-label="Montant du service"
                         className="w-[68px] rounded-md bg-transparent px-1.5 py-1 text-right text-[15px]
                                    font-bold tabular-nums hover:bg-[#F5F1E5] focus:bg-[#F5F1E5]
@@ -1499,7 +1566,7 @@ function ModuleAddition({ onRetour }) {
                     <div className="monte mt-3.5 flex gap-1.5 rounded-[11px] bg-[#F2EDE0] p-1">
                       {[["prorata", "Au prorata"], ["egal", "Parts égales"]].map(([val, label]) => (
                         <button key={val}
-                          onClick={() => majEtat((e) => ({ extras: { ...e.extras, mode: val } }))}
+                          onClick={() => changerModeService(val)}
                           className={`flex-1 rounded-[8px] py-2 text-[12.5px] font-semibold transition-colors ${
                             extras.mode === val
                               ? "bg-white text-[#1C1A17] shadow-[0_1px_2px_rgba(28,26,23,.1)]"
@@ -2073,24 +2140,40 @@ const locEtatVierge = () => ({
   fin: locDansNJours(7),
   personnes: [],
   paiements: [],
-  prochainId: 1000,
   modeTransfert: "cagnotte",
 });
 
-function ModuleLocation({ onRetour }) {
+/** Convertit la réponse de l'API vers l'état local du module location. */
+function versEtatLocalLoc(session) {
+  return {
+    titre: session.titre || "",
+    loyer: session.loyer ?? 0,
+    debut: session.dateDebut || locAujourdhui(),
+    fin: session.dateFin || locDansNJours(7),
+    personnes: session.participants.map((p) => ({
+      id: p.id, nom: p.nom, couleur: p.couleur, debut: p.dateDebut || null, fin: p.dateFin || null,
+    })),
+    paiements: session.versements.map((v) => ({
+      id: v.id, personneId: v.participantId, montant: v.montant, recu: v.recu, date: v.date,
+    })),
+    modeTransfert: session.modeTransfert || "cagnotte",
+  };
+}
+
+const CLE_LOC_JETON = "location:jeton";
+const CHAMPS_PERSONNE_SERVEUR = { debut: "dateDebut", fin: "dateFin" };
+
+function ModuleLocation({ onRetour, sessionInitiale }) {
   const [pret, setPret] = useState(false);
   const [ecran, setEcran] = useState("sejour");
-  const [etat, setEtat] = useState(locEtatVierge);
+  const [jeton, setJeton] = useState(sessionInitiale?.jeton ?? null);
+  const [etat, setEtat] = useState(() => (sessionInitiale ? versEtatLocalLoc(sessionInitiale) : locEtatVierge()));
   const [nomsConnus, setNomsConnus] = useState([]);
   const [sauvegarde, setSauvegarde] = useState("repos");
   const [nouveauNom, setNouveauNom] = useState("");
   const [deplie, setDeplie] = useState([]);
   const [ajoutPaiement, setAjoutPaiement] = useState(null); // personneId
   const [montantSaisi, setMontantSaisi] = useState(0);
-
-  const secours = useRef({});
-  const file = useRef(Promise.resolve());
-  const premierRendu = useRef(true);
 
   const { loyer, debut, fin, personnes, paiements } = etat;
   const calcul = useMemo(() => locCalculer(etat), [etat]);
@@ -2107,119 +2190,144 @@ function ModuleLocation({ onRetour }) {
     return { entrees, sorties, solde: entrees - sorties };
   }, [calcul.resultats]);
 
-  /* --- persistance --- */
-  const ecrire = useCallback((cle, valeur) => {
-    const texte = JSON.stringify(valeur);
-    secours.current[cle] = texte;
-    if (!window.storage?.set) { setSauvegarde("local"); return Promise.resolve(false); }
-    const tache = file.current.then(async () => {
-      setSauvegarde("cours");
-      for (let essai = 0; essai < 3; essai++) {
-        try {
-          const r = await window.storage.set(cle, texte);
-          if (!r) throw new Error("refus");
-          setSauvegarde("ok");
-          return true;
-        } catch (err) {
-          if (essai < 2) { await new Promise((r) => setTimeout(r, 500 * (essai + 1))); continue; }
-          console.error("Sauvegarde impossible:", cle, err);
-          setSauvegarde("erreur");
-          return false;
-        }
-      }
-      return false;
-    });
-    file.current = tache.catch(() => {});
-    return tache;
-  }, []);
+  const [{ executer, differe }] = useState(() => creerFile(setSauvegarde));
 
+  /* --- chargement initial : lien partagé, session déjà connue de cet    --- */
+  /* --- appareil, ou toute première ouverture (une location par lien).  --- */
   useEffect(() => {
+    setNomsConnus(lireJSON(CLE_LOC_NOMS, []));
+    if (sessionInitiale) {
+      ecrireJSON(CLE_LOC_JETON, sessionInitiale.jeton);
+      setPret(true);
+      return;
+    }
     (async () => {
-      const lire = async (cle, defaut) => {
+      const jetonConnu = lireJSON(CLE_LOC_JETON, null);
+      if (jetonConnu) {
         try {
-          const r = await window.storage?.get(cle);
-          if (r?.value) return JSON.parse(r.value);
-        } catch { /* absent */ }
-        return defaut;
-      };
-      const [e, n] = await Promise.all([lire(CLE_LOC_ETAT, null), lire(CLE_LOC_NOMS, [])]);
-      if (e?.personnes) setEtat(e);
-      setNomsConnus(Array.isArray(n) ? n : []);
+          const session = await appeler("lire", { jeton: jetonConnu });
+          setJeton(session.jeton);
+          setEtat(versEtatLocalLoc(session));
+          setPret(true);
+          return;
+        } catch { /* jeton périmé ou session supprimée : on en recrée une */ }
+      }
+      try {
+        const { jeton: nouveau } = await appeler("creer", { type: "location" });
+        ecrireJSON(CLE_LOC_JETON, nouveau);
+        setJeton(nouveau);
+        allerVersSession(nouveau);
+      } catch (e) { console.error(e); }
       setPret(true);
     })();
-  }, []);
-
-  useEffect(() => {
-    if (!pret) return;
-    if (premierRendu.current) { premierRendu.current = false; return; }
-    const t = setTimeout(() => { ecrire(CLE_LOC_ETAT, etat); }, 900);
-    return () => clearTimeout(t);
-  }, [etat, pret, ecrire]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionInitiale]);
 
   useEffect(() => {
     if (!pret || nomsConnus.length === 0) return;
-    const t = setTimeout(() => { ecrire(CLE_LOC_NOMS, nomsConnus); }, 1200);
-    return () => clearTimeout(t);
-  }, [nomsConnus, pret, ecrire]);
+    ecrireJSON(CLE_LOC_NOMS, nomsConnus);
+  }, [nomsConnus, pret]);
 
   const majEtat = useCallback((f) => setEtat((e) => ({ ...e, ...f(e) })), []);
 
-  /* --- personnes --- */
-  const ajouterPersonne = (nom) => {
-    const n = nom.trim();
-    if (!n) return;
-    if (personnes.some((p) => p.nom.toLowerCase() === n.toLowerCase())) return;
-    majEtat((e) => ({
-      personnes: [
-        ...e.personnes,
-        { id: e.prochainId + 1, nom: n, couleur: COULEURS_LOC[e.personnes.length % COULEURS_LOC.length],
-          debut: null, fin: null },   // null = tout le séjour
-      ],
-      prochainId: e.prochainId + 1,
-    }));
-    setNomsConnus((ns) => [n, ...ns.filter((x) => x.toLowerCase() !== n.toLowerCase())].slice(0, 12));
-    setNouveauNom("");
+  const changerTitreLoc = (valeur) => {
+    majEtat(() => ({ titre: valeur }));
+    if (jeton) differe("session:titre", () => appeler("maj-session", { jeton, champs: { titre: valeur } }));
+  };
+  const changerLoyer = (centimes) => {
+    majEtat(() => ({ loyer: centimes }));
+    if (jeton) differe("session:loyer", () => appeler("maj-session", { jeton, champs: { loyer: centimes } }));
+  };
+  const changerDebutSejour = (valeur) => {
+    majEtat(() => ({ debut: valeur }));
+    if (jeton) differe("session:debut", () => appeler("maj-session", { jeton, champs: { dateDebut: valeur } }));
+  };
+  const changerFinSejour = (valeur) => {
+    majEtat(() => ({ fin: valeur }));
+    if (jeton) differe("session:fin", () => appeler("maj-session", { jeton, champs: { dateFin: valeur } }));
+  };
+  const changerModeTransfert = (mode) => {
+    majEtat(() => ({ modeTransfert: mode }));
+    if (jeton) executer(() => appeler("maj-session", { jeton, champs: { modeTransfert: mode } })).catch(() => {});
   };
 
-  const retirerPersonne = (id) =>
+  /* --- personnes --- */
+  const ajouterPersonne = async (nom) => {
+    const n = nom.trim();
+    if (!n || !jeton) return;
+    if (personnes.some((p) => p.nom.toLowerCase() === n.toLowerCase())) return;
+    const couleur = COULEURS_LOC[personnes.length % COULEURS_LOC.length];
+    setNouveauNom("");
+    try {
+      const { id } = await executer(() => appeler("ajouter-participant", { jeton, nom: n, couleur }));
+      majEtat((e) => ({ personnes: [...e.personnes, { id, nom: n, couleur, debut: null, fin: null }] }));
+      setNomsConnus((ns) => [n, ...ns.filter((x) => x.toLowerCase() !== n.toLowerCase())].slice(0, 12));
+    } catch (e) { console.error(e); }
+  };
+
+  const retirerPersonne = (id) => {
     majEtat((e) => ({
       personnes: e.personnes.filter((p) => p.id !== id),
       paiements: e.paiements.filter((v) => v.personneId !== id),
     }));
+    if (jeton) executer(() => appeler("supprimer-participant", { jeton, id })).catch(() => {});
+  };
 
-  const majPersonne = (id, champ, valeur) =>
+  const majPersonne = (id, champ, valeur) => {
     majEtat((e) => ({
       personnes: e.personnes.map((p) => (p.id === id ? { ...p, [champ]: valeur || null } : p)),
     }));
+    if (!jeton) return;
+    const champServeur = CHAMPS_PERSONNE_SERVEUR[champ] || champ;
+    differe(`participant:${id}:${champ}`, () =>
+      appeler("maj-participant", { jeton, id, champs: { [champServeur]: valeur || "" } }));
+  };
 
   /* --- paiements --- */
-  const ajouterPaiement = (personneId, montant) => {
-    if (montant <= 0) return;
-    majEtat((e) => ({
-      paiements: [...e.paiements,
-        { id: e.prochainId + 1, personneId, montant, recu: false, date: locAujourdhui() }],
-      prochainId: e.prochainId + 1,
-    }));
+  const ajouterPaiement = async (personneId, montant) => {
+    if (montant <= 0 || !jeton) return;
     setAjoutPaiement(null);
     setMontantSaisi(0);
+    try {
+      const { id } = await executer(() =>
+        appeler("ajouter-versement", { jeton, participantId: personneId, montant, recu: false }));
+      majEtat((e) => ({ paiements: [...e.paiements, { id, personneId, montant, recu: false, date: locAujourdhui() }] }));
+    } catch (e) { console.error(e); }
   };
 
-  const soldeEnUnCoup = (personneId, montant) => {
-    if (montant <= 0) return;
-    majEtat((e) => ({
-      paiements: [...e.paiements,
-        { id: e.prochainId + 1, personneId, montant, recu: true, date: locAujourdhui() }],
-      prochainId: e.prochainId + 1,
-    }));
+  const soldeEnUnCoup = async (personneId, montant) => {
+    if (montant <= 0 || !jeton) return;
+    try {
+      const { id } = await executer(() =>
+        appeler("ajouter-versement", { jeton, participantId: personneId, montant, recu: true }));
+      majEtat((e) => ({ paiements: [...e.paiements, { id, personneId, montant, recu: true, date: locAujourdhui() }] }));
+    } catch (e) { console.error(e); }
   };
 
-  const basculerRecu = (id) =>
-    majEtat((e) => ({
-      paiements: e.paiements.map((v) => (v.id === id ? { ...v, recu: !v.recu } : v)),
-    }));
+  const basculerRecu = (id) => {
+    majEtat((e) => ({ paiements: e.paiements.map((v) => (v.id === id ? { ...v, recu: !v.recu } : v)) }));
+    if (jeton) executer(() => appeler("basculer-versement", { jeton, id })).catch(() => {});
+  };
 
-  const supprimerPaiement = (id) =>
+  const supprimerPaiement = (id) => {
     majEtat((e) => ({ paiements: e.paiements.filter((v) => v.id !== id) }));
+    if (jeton) executer(() => appeler("supprimer-versement", { jeton, id })).catch(() => {});
+  };
+
+  /** "Tout le monde a réglé sa part" : un versement soldé par débiteur restant. */
+  const reglerTout = async (aRegler) => {
+    if (!jeton || aRegler.length === 0) return;
+    try {
+      const crees = await Promise.all(aRegler.map((p) =>
+        executer(() => appeler("ajouter-versement", { jeton, participantId: p.id, montant: -p.solde, recu: true }))
+      ));
+      majEtat((e) => ({
+        paiements: [...e.paiements, ...aRegler.map((p, i) => ({
+          id: crees[i].id, personneId: p.id, montant: -p.solde, recu: true, date: locAujourdhui(),
+        }))],
+      }));
+    } catch (e) { console.error(e); }
+  };
 
   const suggestions = nomsConnus.filter(
     (n) => !personnes.some((p) => p.nom.toLowerCase() === n.toLowerCase())
@@ -2280,7 +2388,7 @@ function ModuleLocation({ onRetour }) {
           </div>
           <input
             value={etat.titre}
-            onChange={(e) => majEtat(() => ({ titre: e.target.value }))}
+            onChange={(e) => changerTitreLoc(e.target.value)}
             placeholder="La location"
             aria-label="Nom de la location"
             className="w-full rounded-md bg-transparent -ml-1 px-1 text-[32px] font-bold
@@ -2306,7 +2414,7 @@ function ModuleLocation({ onRetour }) {
                 <div className="flex shrink-0 items-baseline gap-1">
                   <ChampMontantLoc
                     centimes={loyer}
-                    onChange={(c) => majEtat(() => ({ loyer: c }))}
+                    onChange={changerLoyer}
                     aria-label="Coût total"
                     className="w-[92px] rounded-md bg-transparent px-1.5 py-1 text-right text-[19px]
                                font-bold tabular-nums focus:outline-none"
@@ -2324,7 +2432,7 @@ function ModuleLocation({ onRetour }) {
                     Arrivée
                   </span>
                   <input type="date" value={debut}
-                    onChange={(e) => majEtat(() => ({ debut: e.target.value }))}
+                    onChange={(e) => changerDebutSejour(e.target.value)}
                     className="w-full rounded-[10px] px-2.5 py-2 text-[13.5px] focus:outline-none"
                     style={{ border: "1px solid #E0D8C7", background: "#FCFAF5",
                              fontFamily: "'Roboto Mono', monospace" }} />
@@ -2335,7 +2443,7 @@ function ModuleLocation({ onRetour }) {
                     Départ
                   </span>
                   <input type="date" value={fin} min={debut}
-                    onChange={(e) => majEtat(() => ({ fin: e.target.value }))}
+                    onChange={(e) => changerFinSejour(e.target.value)}
                     className="w-full rounded-[10px] px-2.5 py-2 text-[13.5px] focus:outline-none"
                     style={{ border: "1px solid #E0D8C7", background: "#FCFAF5",
                              fontFamily: "'Roboto Mono', monospace" }} />
@@ -2528,19 +2636,7 @@ function ModuleLocation({ onRetour }) {
 
             {calcul.resultats.filter((p) => p.solde < 0).length > 1 && (
               <button
-                onClick={() => {
-                  const aRegler = calcul.resultats.filter((p) => p.solde < 0);
-                  majEtat((e) => {
-                    let id = e.prochainId;
-                    return {
-                      paiements: [...e.paiements, ...aRegler.map((p) => ({
-                        id: ++id, personneId: p.id, montant: -p.solde,
-                        recu: true, date: locAujourdhui(),
-                      }))],
-                      prochainId: id,
-                    };
-                  });
-                }}
+                onClick={() => reglerTout(calcul.resultats.filter((p) => p.solde < 0))}
                 className="mb-4 flex w-full items-center justify-center gap-2 rounded-[14px] py-3
                            text-[13px] font-semibold transition-colors"
                 style={{ border: "1px dashed #CDC4B0", color: "#8B8578" }}>
@@ -2574,7 +2670,7 @@ function ModuleLocation({ onRetour }) {
                               style={{ fontFamily: "'Roboto Mono', monospace",
                                        color: p.solde === 0 ? "#2E6F5E"
                                             : p.solde > 0 ? "#B5761F" : "#C1362F" }}>
-                          {p.solde === 0 ? "à locJour"
+                          {p.solde === 0 ? "à jour"
                             : p.solde > 0 ? `+${locFmt(p.solde)}` : locFmt(p.solde)}
                         </span>
                       </div>
@@ -2730,7 +2826,7 @@ function ModuleLocation({ onRetour }) {
                     <div className="mb-3 flex gap-1 rounded-[12px] p-1" style={{ background: "#F0EADB" }}>
                       {[["cagnotte", "Cagnotte"], ["simple", "Au plus court"], ["prorata", "Au prorata"]]
                         .map(([v, l]) => (
-                        <button key={v} onClick={() => majEtat(() => ({ modeTransfert: v }))}
+                        <button key={v} onClick={() => changerModeTransfert(v)}
                           className="flex-1 rounded-[9px] py-2 text-[11.5px] font-semibold transition-colors"
                           style={etat.modeTransfert === v
                             ? { background: "#fff", color: "#1C1A17", boxShadow: "0 1px 2px rgba(28,26,23,.1)" }
@@ -2881,7 +2977,7 @@ function ModuleLocation({ onRetour }) {
                   <div className="mt-1 flex items-baseline gap-2 border-t pt-2.5 text-[11px]"
                        style={{ fontFamily: "'Roboto Mono', monospace", borderColor: "#DDD5C4",
                                 color: "#B0A897" }}>
-                    <span className="flex-1">locNuits · dû · versé · solde</span>
+                    <span className="flex-1">Nuits · dû · versé · solde</span>
                   </div>
                 </div>
               </section>
@@ -2988,27 +3084,41 @@ function Accueil({ onChoisir }) {
 
 export default function Partage() {
   const [module, setModule] = useState(null);
+  const [session, setSession] = useState(null); // session déjà chargée pour un lien /s/<jeton>
   const [pret, setPret] = useState(false);
+  const [introuvable, setIntrouvable] = useState(false);
 
-  // on retient le dernier module ouvert
   useEffect(() => {
     (async () => {
-      try {
-        const r = await window.storage?.get(CLE_MODULE);
-        if (r?.value) setModule(JSON.parse(r.value));
-      } catch { /* premier lancement */ }
+      const jeton = jetonDeLURL();
+      if (jeton) {
+        try {
+          const s = await appeler("lire", { jeton });
+          setSession(s);
+          setModule(s.type);
+        } catch {
+          setIntrouvable(true);
+          allerVersAccueil();
+        }
+        setPret(true);
+        return;
+      }
+      setModule(lireJSON(CLE_MODULE, null));
       setPret(true);
     })();
   }, []);
 
   const choisir = (cle) => {
     setModule(cle);
-    window.storage?.set(CLE_MODULE, JSON.stringify(cle)).catch(() => {});
+    ecrireJSON(CLE_MODULE, cle);
   };
 
   const retour = () => {
     setModule(null);
-    window.storage?.set(CLE_MODULE, JSON.stringify(null)).catch(() => {});
+    setSession(null);
+    setIntrouvable(false);
+    ecrireJSON(CLE_MODULE, null);
+    allerVersAccueil();
   };
 
   if (!pret) {
@@ -3019,7 +3129,24 @@ export default function Partage() {
     );
   }
 
-  if (module === "addition") return <ModuleAddition onRetour={retour} />;
-  if (module === "location") return <ModuleLocation onRetour={retour} />;
+  if (introuvable) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 px-6 text-center"
+           style={{ background: "#F7F3E8", color: "#1C1A17",
+                    fontFamily: "'Archivo', system-ui, sans-serif" }}>
+        <p className="text-[17px] font-bold">Ce lien ne mène à rien</p>
+        <p className="text-[13.5px] leading-relaxed" style={{ color: "#8B8578" }}>
+          La session a peut-être été supprimée, ou le lien est incomplet.
+        </p>
+        <button onClick={retour}
+          className="mt-2 rounded-[12px] bg-[#1C1A17] px-5 py-3 text-[14px] font-semibold text-[#F7F3E8]">
+          Retour à l'accueil
+        </button>
+      </div>
+    );
+  }
+
+  if (module === "addition") return <ModuleAddition onRetour={retour} sessionInitiale={session} />;
+  if (module === "location") return <ModuleLocation onRetour={retour} sessionInitiale={session} />;
   return <Accueil onChoisir={choisir} />;
 }
