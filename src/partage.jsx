@@ -400,26 +400,28 @@ function QuiEsTu({ participants, nouveauNom, onChangeNouveauNom, onAjouter, onCh
         <p className="mt-1.5 text-[12.5px] leading-relaxed text-[#8B8578]">
           Pour te repérer plus vite dans les écrans. Ça ne change rien pour les autres.
         </p>
-        <div className="mt-4 max-h-[240px] space-y-1.5 overflow-y-auto">
-          {participants.map((p) => (
-            <button key={p.id} onClick={() => onChoisir(p.id)}
-              className="flex w-full items-center gap-3 rounded-[12px] border px-3 py-2.5 text-left
-                         transition-colors hover:border-[#CDC4B0]"
-              style={{ borderColor: "#E0D8C7" }}>
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full
-                               text-[10px] font-bold text-[#F7F3E8]"
-                    style={{ background: p.couleur }}>
-                {p.nom.slice(0, 2).toUpperCase()}
-              </span>
-              <span className="text-[14px] font-medium">{p.nom}</span>
-            </button>
-          ))}
-        </div>
+        {participants.length > 0 && (
+          <div className="mt-4 max-h-[240px] space-y-1.5 overflow-y-auto">
+            {participants.map((p) => (
+              <button key={p.id} onClick={() => onChoisir(p.id)}
+                className="flex w-full items-center gap-3 rounded-[12px] border px-3 py-2.5 text-left
+                           transition-colors hover:border-[#CDC4B0]"
+                style={{ borderColor: "#E0D8C7" }}>
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full
+                                 text-[10px] font-bold text-[#F7F3E8]"
+                      style={{ background: p.couleur }}>
+                  {p.nom.slice(0, 2).toUpperCase()}
+                </span>
+                <span className="text-[14px] font-medium">{p.nom}</span>
+              </button>
+            ))}
+          </div>
+        )}
         <div className="mt-3 flex items-center gap-1 rounded-full border border-dashed px-3 py-1.5"
              style={{ borderColor: "#CDC4B0" }}>
           <input value={nouveauNom} onChange={onChangeNouveauNom}
             onKeyDown={(e) => e.key === "Enter" && onAjouter()}
-            placeholder="Je ne suis pas dans la liste"
+            placeholder={participants.length > 0 ? "Je ne suis pas dans la liste" : "Ton prénom"}
             className="w-full bg-transparent text-[13.5px] placeholder-[#B0A897] focus:outline-none" />
           <button onClick={onAjouter} disabled={!nouveauNom.trim()}
             className="shrink-0 rounded-full px-2.5 py-1 text-[12px] font-semibold transition-colors"
@@ -700,7 +702,7 @@ function partsAPousser(ligne) {
   });
 }
 
-function ModuleAddition({ onRetour, sessionInitiale }) {
+function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
   const [pret, setPret] = useState(!!sessionInitiale);
   const [ecran, setEcran] = useState(sessionInitiale ? "saisie" : "historique");
   const [jeton, setJeton] = useState(sessionInitiale?.jeton ?? null);
@@ -720,6 +722,7 @@ function ModuleAddition({ onRetour, sessionInitiale }) {
   const [confirmation, setConfirmation] = useState(null);
   const [resteLigne, setResteLigne] = useState(null); // { ligneId, designes[] }
   const [tri, setTri] = useState("saisie");           // saisie | montant | nom
+  const [inviteFin, setInviteFin] = useState(null);   // mode invité : "cloturee" | "supprimee"
   const [sauvegarde, setSauvegarde] = useState("repos"); // repos | cours | ok | erreur
   const [partageLienEtat, setPartageLienEtat] = useState("pret"); // pret | copie
   const [moi, setMoi] = useState(null);
@@ -814,7 +817,7 @@ function ModuleAddition({ onRetour, sessionInitiale }) {
 
   /* --- "qui es-tu" : repère local, pas un compte --- */
   useEffect(() => {
-    if (!pret || !jeton || participants.length === 0) return;
+    if (!pret || !jeton) return;
     const m = lireJSON(`moi:${jeton}`, null);
     if (m === null) setDemanderQui(true);
     else if (m !== "SKIP" && participants.some((p) => p.id === m)) setMoi(m);
@@ -1033,6 +1036,7 @@ function ModuleAddition({ onRetour, sessionInitiale }) {
       try { await executer(() => appeler("maj-session", { jeton, champs: { titre: titreAuto(), cloturee: true } })); }
       catch (e) { console.error(e); }
     }
+    if (modeInvite) { setInviteFin("cloturee"); return; }
     setDeplie([]);
     setJeton(null);
     setEtat(etatVierge());
@@ -1067,10 +1071,12 @@ function ModuleAddition({ onRetour, sessionInitiale }) {
       try { await appeler("supprimer-session", { jeton }); } catch (e) { console.error(e); }
       setHistorique(retirerIndex(CLE_HISTO, jeton));
     }
+    setConfirmation(null);
+    if (modeInvite) { setInviteFin("supprimee"); return; }
     setJeton(null);
     setEtat(etatVierge());
     allerVersAccueil();
-    setDeplie([]); setImage(null); setConfirmation(null);
+    setDeplie([]); setImage(null);
     setEcran("historique");
   };
 
@@ -1171,6 +1177,21 @@ function ModuleAddition({ onRetour, sessionInitiale }) {
     );
   }
 
+  if (inviteFin) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 px-6 text-center bg-[#F7F3E8]"
+           style={{ fontFamily: "'Archivo', system-ui, sans-serif" }}>
+        <Check size={26} style={{ color: "#2E6F5E" }} />
+        <p className="text-[17px] font-bold">
+          {inviteFin === "supprimee" ? "Addition supprimée" : "Addition clôturée"}
+        </p>
+        <p className="max-w-[280px] text-[13.5px] leading-relaxed" style={{ color: "#8B8578" }}>
+          Tu peux fermer cette page.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="relative grain min-h-screen bg-[#F7F3E8] text-[#1C1A17] antialiased"
          style={{ fontFamily: "'Archivo', system-ui, sans-serif" }}>
@@ -1253,11 +1274,13 @@ function ModuleAddition({ onRetour, sessionInitiale }) {
           <>
             <header className="pt-10 pb-8">
               <div className="mb-5 flex items-center justify-between">
-                <button onClick={() => { allerVersAccueil(); setEcran("historique"); }}
-                  className="-ml-1 flex items-center gap-1 text-[13px] text-[#8B8578]
-                             hover:text-[#1C1A17] transition-colors">
-                  <ChevronLeft size={16} /> Mes additions
-                </button>
+                {modeInvite ? <span /> : (
+                  <button onClick={() => { allerVersAccueil(); setEcran("historique"); }}
+                    className="-ml-1 flex items-center gap-1 text-[13px] text-[#8B8578]
+                               hover:text-[#1C1A17] transition-colors">
+                    <ChevronLeft size={16} /> Mes additions
+                  </button>
+                )}
                 <span className="flex items-center gap-3">
                   <span className={`flex items-center gap-1.5 text-[11px] transition-colors ${
                           sauvegarde === "erreur" ? "text-[#C1362F]" : "text-[#B0A897]"}`}
@@ -2296,7 +2319,7 @@ function versEtatLocalLoc(session) {
 const CLE_LOC_HISTO = "location:historique";
 const CHAMPS_PERSONNE_SERVEUR = { debut: "dateDebut", fin: "dateFin" };
 
-function ModuleLocation({ onRetour, sessionInitiale }) {
+function ModuleLocation({ onRetour, sessionInitiale, modeInvite }) {
   const [pret, setPret] = useState(!!sessionInitiale);
   const [ecran, setEcran] = useState(sessionInitiale ? "sejour" : "historique");
   const [jeton, setJeton] = useState(sessionInitiale?.jeton ?? null);
@@ -2305,6 +2328,7 @@ function ModuleLocation({ onRetour, sessionInitiale }) {
   const [nomsConnus, setNomsConnus] = useState([]);
   const [sauvegarde, setSauvegarde] = useState("repos");
   const [partageLienEtat, setPartageLienEtat] = useState("pret"); // pret | copie
+  const [inviteFin, setInviteFin] = useState(false); // mode invité : location clôturée
   const [moi, setMoi] = useState(null);
   const [demanderQui, setDemanderQui] = useState(false);
   const [nomQuiEsTu, setNomQuiEsTu] = useState("");
@@ -2405,7 +2429,7 @@ function ModuleLocation({ onRetour, sessionInitiale }) {
 
   /* --- "qui es-tu" : repère local, pas un compte --- */
   useEffect(() => {
-    if (!pret || !jeton || personnes.length === 0) return;
+    if (!pret || !jeton) return;
     const m = lireJSON(`moi:${jeton}`, null);
     if (m === null) setDemanderQui(true);
     else if (m !== "SKIP" && personnes.some((p) => p.id === m)) setMoi(m);
@@ -2442,6 +2466,7 @@ function ModuleLocation({ onRetour, sessionInitiale }) {
       try { await executer(() => appeler("maj-session", { jeton, champs: { cloturee: true } })); }
       catch (e) { console.error(e); }
     }
+    if (modeInvite) { setInviteFin(true); return; }
     setJeton(null);
     setEtat(locEtatVierge());
     allerVersAccueil();
@@ -2578,6 +2603,19 @@ function ModuleLocation({ onRetour, sessionInitiale }) {
     );
   }
 
+  if (inviteFin) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 px-6 text-center"
+           style={{ background: "#F7F3E8", fontFamily: "'Archivo', system-ui, sans-serif" }}>
+        <Check size={26} style={{ color: "#2E6F5E" }} />
+        <p className="text-[17px] font-bold">Location clôturée</p>
+        <p className="max-w-[280px] text-[13.5px] leading-relaxed" style={{ color: "#8B8578" }}>
+          Tu peux fermer cette page.
+        </p>
+      </div>
+    );
+  }
+
   const ongletActif = (nom) => ecran === nom;
   const onglet = (nom, libelle, icone) => (
     <button
@@ -2658,11 +2696,13 @@ function ModuleLocation({ onRetour, sessionInitiale }) {
         {ecran !== "historique" && (<>
         <header className="pt-10 pb-7">
           <div className="mb-4 flex items-center justify-between">
-            <button onClick={() => { allerVersAccueil(); setEcran("historique"); }}
-              className="-ml-1 flex items-center gap-1 text-[13px] transition-colors"
-              style={{ color: "#8B8578" }}>
-              <ChevronLeft size={16} /> Mes locations
-            </button>
+            {modeInvite ? <span /> : (
+              <button onClick={() => { allerVersAccueil(); setEcran("historique"); }}
+                className="-ml-1 flex items-center gap-1 text-[13px] transition-colors"
+                style={{ color: "#8B8578" }}>
+                <ChevronLeft size={16} /> Mes locations
+              </button>
+            )}
             <span className="flex items-center gap-1.5 text-[11px]"
                   style={{ fontFamily: "'Roboto Mono', monospace",
                            color: sauvegarde === "erreur" ? "#C1362F" : "#B0A897" }}>
@@ -3379,7 +3419,7 @@ function versEtatLocalCagnotte(session) {
   };
 }
 
-function ModuleCagnotte({ onRetour, sessionInitiale }) {
+function ModuleCagnotte({ onRetour, sessionInitiale, modeInvite }) {
   const [pret, setPret] = useState(!!sessionInitiale);
   const [ecran, setEcran] = useState(sessionInitiale ? "cagnotte" : "historique");
   const [jeton, setJeton] = useState(sessionInitiale?.jeton ?? null);
@@ -3389,6 +3429,7 @@ function ModuleCagnotte({ onRetour, sessionInitiale }) {
   const [sauvegarde, setSauvegarde] = useState("repos");
   const [partageOrgEtat, setPartageOrgEtat] = useState("pret");
   const [partageContribEtat, setPartageContribEtat] = useState("pret");
+  const [inviteFin, setInviteFin] = useState(false); // mode invité : cagnotte clôturée
   const [moi, setMoi] = useState(null);
   const [demanderQui, setDemanderQui] = useState(false);
   const [nomQuiEsTu, setNomQuiEsTu] = useState("");
@@ -3446,7 +3487,7 @@ function ModuleCagnotte({ onRetour, sessionInitiale }) {
 
   /* --- "qui es-tu" : repère local, pas un compte --- */
   useEffect(() => {
-    if (!pret || !jeton || participants.length === 0) return;
+    if (!pret || !jeton) return;
     const m = lireJSON(`moi:${jeton}`, null);
     if (m === null) setDemanderQui(true);
     else if (m !== "SKIP" && participants.some((p) => p.id === m)) setMoi(m);
@@ -3556,6 +3597,7 @@ function ModuleCagnotte({ onRetour, sessionInitiale }) {
       try { await executer(() => appeler("maj-session", { jeton, champs: { cloturee: true } })); }
       catch (e) { console.error(e); }
     }
+    if (modeInvite) { setInviteFin(true); return; }
     setJeton(null);
     setEtat(cagnotteEtatVierge());
     allerVersAccueil();
@@ -3594,6 +3636,19 @@ function ModuleCagnotte({ onRetour, sessionInitiale }) {
     return (
       <div className="flex min-h-screen items-center justify-center" style={{ background: "#F7F3E8" }}>
         <Loader2 size={22} className="animate-spin" style={{ color: "#B0A897" }} />
+      </div>
+    );
+  }
+
+  if (inviteFin) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 px-6 text-center"
+           style={{ background: "#F7F3E8", fontFamily: "'Archivo', system-ui, sans-serif" }}>
+        <Check size={26} style={{ color: "#2E6F5E" }} />
+        <p className="text-[17px] font-bold">Cagnotte clôturée</p>
+        <p className="max-w-[280px] text-[13.5px] leading-relaxed" style={{ color: "#8B8578" }}>
+          Tu peux fermer cette page.
+        </p>
       </div>
     );
   }
@@ -3666,10 +3721,12 @@ function ModuleCagnotte({ onRetour, sessionInitiale }) {
         {ecran !== "historique" && (<>
           <header className="pt-10 pb-8">
             <div className="mb-5 flex items-center justify-between">
-              <button onClick={() => { allerVersAccueil(); setEcran("historique"); }}
-                className="-ml-1 flex items-center gap-1 text-[13px]" style={{ color: "#8B8578" }}>
-                <ChevronLeft size={16} /> Mes cagnottes
-              </button>
+              {modeInvite ? <span /> : (
+                <button onClick={() => { allerVersAccueil(); setEcran("historique"); }}
+                  className="-ml-1 flex items-center gap-1 text-[13px]" style={{ color: "#8B8578" }}>
+                  <ChevronLeft size={16} /> Mes cagnottes
+                </button>
+              )}
               <span className="flex items-center gap-1.5 text-[11px]"
                     style={{ fontFamily: "'Roboto Mono', monospace",
                              color: sauvegarde === "erreur" ? "#C1362F" : "#B0A897" }}>
@@ -3997,11 +4054,16 @@ export default function Partage() {
   const [session, setSession] = useState(null); // session déjà chargée pour un lien /s/<jeton>
   const [pret, setPret] = useState(false);
   const [introuvable, setIntrouvable] = useState(false);
+  // Arrivée par lien brut (/s/<jeton>) : on ne partage que CETTE session, pas
+  // l'appli entière — aucun moyen de distinguer le créateur d'un destinataire
+  // sans compte, donc la règle s'applique à tout le monde de la même façon.
+  const [modeInvite, setModeInvite] = useState(false);
 
   useEffect(() => {
     (async () => {
       const jeton = jetonDeLURL();
       if (jeton) {
+        setModeInvite(true);
         try {
           const s = await appeler("lire", { jeton });
           setSession(s);
@@ -4056,8 +4118,11 @@ export default function Partage() {
     );
   }
 
-  if (module === "addition") return <ModuleAddition onRetour={retour} sessionInitiale={session} />;
-  if (module === "location") return <ModuleLocation onRetour={retour} sessionInitiale={session} />;
-  if (module === "cagnotte") return <ModuleCagnotte onRetour={retour} sessionInitiale={session} />;
+  if (module === "addition")
+    return <ModuleAddition onRetour={retour} sessionInitiale={session} modeInvite={modeInvite} />;
+  if (module === "location")
+    return <ModuleLocation onRetour={retour} sessionInitiale={session} modeInvite={modeInvite} />;
+  if (module === "cagnotte")
+    return <ModuleCagnotte onRetour={retour} sessionInitiale={session} modeInvite={modeInvite} />;
   return <Accueil onChoisir={choisir} />;
 }
