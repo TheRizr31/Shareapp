@@ -7,6 +7,7 @@ import {
 import {
   appeler, creerFile, lireJSON, ecrireJSON, majIndex, retirerIndex,
   jetonDeLURL, allerVersSession, allerVersAccueil, partagerLien,
+  useActualisationPeriodique,
 } from "./api.js";
 
 /* ==================================================================== */
@@ -680,6 +681,7 @@ function versEtatLocal(session) {
     extras: { service: session.service ?? 0, mode: session.modeService ?? "prorata" },
     totalAttendu: session.totalAttendu ?? 0,
     clotureeLe: session.clotureeLe ?? null,
+    modifieLe: session.modifieLe ?? null,
   };
 }
 
@@ -836,6 +838,13 @@ function ModuleAddition({ onRetour, sessionInitiale }) {
     const id = await ajouterNom(nomQuiEsTu);
     if (id) marquerMoi(id);
   };
+
+  /* --- voir les autres en direct : relit toutes les 2s, n'applique que --- */
+  /* --- si quelque chose a changé, jamais pendant une saisie en cours.  --- */
+  const appliquerActualisation = useCallback((session) => {
+    setEtat((e) => (session.modifieLe === e.modifieLe ? e : versEtatLocal(session)));
+  }, []);
+  useActualisationPeriodique(jeton, ecran === "saisie", appliquerActualisation);
 
   const lignesAffichees = useMemo(() => {
     if (tri === "saisie") return lignes;
@@ -2280,6 +2289,7 @@ function versEtatLocalLoc(session) {
       id: v.id, personneId: v.participantId, montant: v.montant, recu: v.recu, date: v.date,
     })),
     modeTransfert: session.modeTransfert || "cagnotte",
+    modifieLe: session.modifieLe ?? null,
   };
 }
 
@@ -2419,6 +2429,12 @@ function ModuleLocation({ onRetour, sessionInitiale }) {
     const id = await ajouterPersonne(nomQuiEsTu);
     if (id) marquerMoi(id);
   };
+
+  /* --- voir les autres en direct --- */
+  const appliquerActualisation = useCallback((session) => {
+    setEtat((e) => (session.modifieLe === e.modifieLe ? e : versEtatLocalLoc(session)));
+  }, []);
+  useActualisationPeriodique(jeton, ecran !== "historique", appliquerActualisation);
 
   /* --- historique --- */
   const cloturer = async () => {
@@ -3359,6 +3375,7 @@ function versEtatLocalCagnotte(session) {
       ? session.versements.reduce((a, v) => a + v.montant, 0)
       : (session.totalVerse ?? 0),
     clotureeLe: session.clotureeLe ?? null,
+    modifieLe: session.modifieLe ?? null,
   };
 }
 
@@ -3489,6 +3506,12 @@ function ModuleCagnotte({ onRetour, sessionInitiale }) {
     const id = await ajouterNom(nomQuiEsTu);
     if (id) marquerMoi(id);
   };
+
+  /* --- voir les autres en direct --- */
+  const appliquerActualisation = useCallback((session) => {
+    setEtat((e) => (session.modifieLe === e.modifieLe ? e : versEtatLocalCagnotte(session)));
+  }, []);
+  useActualisationPeriodique(jeton, ecran !== "historique", appliquerActualisation);
 
   const retirerParticipant = (id) => {
     majEtat((e) => ({

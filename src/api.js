@@ -7,6 +7,8 @@
  *  historiqueLocal.js) et les suggestions de prénoms.
  * ==================================================================== */
 
+import { useEffect, useRef } from "react";
+
 export async function appeler(action, corps = {}) {
   const r = await fetch(`/api/${action}`, {
     method: "POST",
@@ -122,4 +124,39 @@ export function allerVersSession(jeton) {
 
 export function allerVersAccueil() {
   history.pushState({}, "", "/");
+}
+
+/* ---------- actualisation périodique (pour voir les autres en direct) ---------- */
+
+/**
+ * Toutes les `intervalleMs`, relit la session et transmet la réponse à
+ * `onDonnees` — à charge pour l'appelant de ne l'appliquer que si
+ * quelque chose a changé (comparer modifieLe), afin qu'aucun re-rendu
+ * ne se produise quand rien de nouveau n'est arrivé.
+ *
+ * Ne relit rien : si l'onglet est en arrière-plan (économie de
+ * batterie/données), si aucun jeton n'est actif, ou si un champ de
+ * saisie a le focus (pour ne jamais couper quelqu'un en pleine frappe).
+ */
+export function useActualisationPeriodique(jeton, actif, onDonnees, intervalleMs = 2000) {
+  const rappelRef = useRef(onDonnees);
+  rappelRef.current = onDonnees;
+
+  useEffect(() => {
+    if (!jeton || !actif) return;
+    let annule = false;
+
+    const tick = async () => {
+      if (document.hidden) return;
+      const el = document.activeElement;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA")) return;
+      try {
+        const session = await appeler("lire", { jeton });
+        if (!annule) rappelRef.current(session);
+      } catch { /* réseau ou session supprimée : on retentera au prochain passage */ }
+    };
+
+    const id = setInterval(tick, intervalleMs);
+    return () => { annule = true; clearInterval(id); };
+  }, [jeton, actif, intervalleMs]);
 }
