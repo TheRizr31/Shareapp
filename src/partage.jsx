@@ -1067,36 +1067,23 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
   };
 
   /**
-   * Aperçu du montant réel d'une part, cohérent avec calculer() : la
-   * fraction de pid est normalisée par la somme des fractions de tous les
-   * actifs sur la ligne, pas rapportée brute au total — sinon l'aperçu ment
-   * dès qu'il y a plus de deux personnes ou un article en plusieurs
-   * exemplaires (ex. 3 personnes à 2/3 chacune sur un ×2 : 16 € chacun en
-   * vrai, jamais 32 €).
+   * Une fraction est une portion d'UN exemplaire (pas du total ×quantite) :
+   * un ×2 partagé en tiers égaux donne 2/3 à chacun, valant 2/3 du prix
+   * unitaire, pas 2/3 du total. C'est pour ça que 3 personnes à 2/3 sur un
+   * ×2 à 24 € l'unité valent chacune 16 € (2/3 de 24), pas 32 € (2/3 de 48).
+   * Montant et fraction sont donc chacun l'absolu de l'autre, indépendamment
+   * des autres participants — modifier l'un ne change jamais ce que les
+   * autres doivent : le "reste" (excédent ou manque par rapport à la
+   * quantité cible) reste entièrement à attribuer à la main, comme avant.
    */
   const montantDeLaPart = (ligne, pid) => {
-    if (!ligne.participantIds.includes(pid)) return null;
-    const T = totalLigne(ligne);
-    const total = sommeFractions(ligne.participantIds.map((id) => fractionDe(ligne, id)));
-    if (T <= 0 || total[0] <= 0) return 0;
+    if (!ligne.participantIds.includes(pid) || ligne.montant <= 0) return null;
     const [n, d] = fractionDe(ligne, pid);
-    return Math.round((T * n * total[1]) / (d * total[0]));
+    return Math.round((ligne.montant * n) / d);
   };
 
-  /** Fraction à donner à pid pour que sa part, une fois recalculée avec les
-   *  fractions courantes des autres, retombe exactement sur `centimes`. */
-  const fractionDepuisMontant = (ligne, pid, centimes) => {
-    const T = totalLigne(ligne);
-    const autres = ligne.participantIds.filter((id) => id !== pid);
-    const sommeAutres = sommeFractions(autres.map((id) => fractionDe(ligne, id)));
-    if (autres.length === 0 || sommeAutres[0] <= 0) {
-      // Personne d'autre ne réclame de part ici : rien à négocier.
-      return centimes <= 0 ? [0, 1] : [1, 1];
-    }
-    const X = Math.max(0, Math.min(centimes, T - 1));
-    if (X <= 0) return [0, 1];
-    return reduire([sommeAutres[0] * X, sommeAutres[1] * (T - X)]);
-  };
+  const fractionDepuisMontant = (ligne, centimes) =>
+    reduire([Math.max(0, centimes), ligne.montant || 1]);
 
   const validerReste = () => {
     if (!resteLigne || resteLigne.designes.length === 0) return;
@@ -1720,7 +1707,7 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
                               onBasculer={() => basculer(l.id, p.id)}
                               onFraction={(f) => changerFraction(l.id, p.id, f)}
                               onMontant={(c) => changerFractionDepuisMontant(
-                                l.id, p.id, fractionDepuisMontant(l, p.id, c)
+                                l.id, p.id, fractionDepuisMontant(l, c)
                               )} />
                           ))}
                           <button onClick={() => tousOuAucun(l.id, l.participantIds.length !== participants.length)}
