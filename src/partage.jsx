@@ -601,14 +601,14 @@ function entierSuivant([n, d], sens) {
 
 /**
  * Avatar + fraction réglable par − et +. Appui long = saut à l'entier.
- * En dessous, le montant en euros équivalent, éditable : le taper met à
- * jour la fraction (montant ÷ total de l'article, réduit exactement) —
- * les deux champs sont deux vues du même nombre, jamais désynchronisées.
+ * En dessous, le montant en euros équivalent (calculé par l'appelant, qui
+ * seul connaît les fractions des autres participants sur la ligne), lui
+ * aussi éditable : le taper redemande à l'appelant la fraction à donner
+ * pour retomber exactement sur ce montant une fois la part recalculée.
  */
-function PastilleParts({ participant, actif, fraction, totalLigne, onBasculer, onFraction, onMontant, taille = 36 }) {
+function PastilleParts({ participant, actif, fraction, montant, onBasculer, onFraction, onMontant, taille = 36 }) {
   const initiales = participant.nom.trim().slice(0, 2).toUpperCase() || "?";
   const pleine = fraction[0] === fraction[1];
-  const montantCentimes = totalLigne > 0 ? Math.round((totalLigne * fraction[0]) / fraction[1]) : 0;
   const minuterie = useRef(null);
   const aSaute = useRef(false);
 
@@ -679,10 +679,10 @@ function PastilleParts({ participant, actif, fraction, totalLigne, onBasculer, o
             </span>
             {commande(1, "+", `Plus pour ${participant.nom}`)}
           </span>
-          {totalLigne > 0 && (
+          {montant !== null && (
             <span className="flex items-center gap-0.5">
-              <ChampMontant centimes={montantCentimes}
-                onChange={(c) => onMontant(reduire([Math.max(0, c), totalLigne]))}
+              <ChampMontant centimes={montant}
+                onChange={onMontant}
                 aria-label={`Montant de ${participant.nom}`}
                 className="w-[42px] rounded-md bg-transparent px-0.5 text-center text-[11px]
                            font-semibold tabular-nums text-[#7C8172] hover:bg-white focus:bg-white
@@ -1064,6 +1064,38 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
     differe(`article:${ligneId}:montant:${pid}`, () => appeler("definir-parts", {
       jeton, articleId: ligneId, parts: partsAPousser(suivante), champs: { reglee: true },
     }));
+  };
+
+  /**
+   * Aperçu du montant réel d'une part, cohérent avec calculer() : la
+   * fraction de pid est normalisée par la somme des fractions de tous les
+   * actifs sur la ligne, pas rapportée brute au total — sinon l'aperçu ment
+   * dès qu'il y a plus de deux personnes ou un article en plusieurs
+   * exemplaires (ex. 3 personnes à 2/3 chacune sur un ×2 : 16 € chacun en
+   * vrai, jamais 32 €).
+   */
+  const montantDeLaPart = (ligne, pid) => {
+    if (!ligne.participantIds.includes(pid)) return null;
+    const T = totalLigne(ligne);
+    const total = sommeFractions(ligne.participantIds.map((id) => fractionDe(ligne, id)));
+    if (T <= 0 || total[0] <= 0) return 0;
+    const [n, d] = fractionDe(ligne, pid);
+    return Math.round((T * n * total[1]) / (d * total[0]));
+  };
+
+  /** Fraction à donner à pid pour que sa part, une fois recalculée avec les
+   *  fractions courantes des autres, retombe exactement sur `centimes`. */
+  const fractionDepuisMontant = (ligne, pid, centimes) => {
+    const T = totalLigne(ligne);
+    const autres = ligne.participantIds.filter((id) => id !== pid);
+    const sommeAutres = sommeFractions(autres.map((id) => fractionDe(ligne, id)));
+    if (autres.length === 0 || sommeAutres[0] <= 0) {
+      // Personne d'autre ne réclame de part ici : rien à négocier.
+      return centimes <= 0 ? [0, 1] : [1, 1];
+    }
+    const X = Math.max(0, Math.min(centimes, T - 1));
+    if (X <= 0) return [0, 1];
+    return reduire([sommeAutres[0] * X, sommeAutres[1] * (T - X)]);
   };
 
   const validerReste = () => {
@@ -1684,10 +1716,12 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
                             <PastilleParts key={p.id} participant={p} taille={34}
                               actif={l.participantIds.includes(p.id)}
                               fraction={fractionDe(l, p.id)}
-                              totalLigne={totalLigne(l)}
+                              montant={montantDeLaPart(l, p.id)}
                               onBasculer={() => basculer(l.id, p.id)}
                               onFraction={(f) => changerFraction(l.id, p.id, f)}
-                              onMontant={(f) => changerFractionDepuisMontant(l.id, p.id, f)} />
+                              onMontant={(c) => changerFractionDepuisMontant(
+                                l.id, p.id, fractionDepuisMontant(l, p.id, c)
+                              )} />
                           ))}
                           <button onClick={() => tousOuAucun(l.id, l.participantIds.length !== participants.length)}
                             className="ml-auto shrink-0 rounded-full px-2 py-1 text-[10px] font-bold uppercase
