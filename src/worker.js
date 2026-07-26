@@ -319,21 +319,37 @@ async function traiterApi(request, env, action) {
         return json({ ok: true });
 
       /* --- parts : remplacement atomique ---------------------------- */
+      /* `champs` (quantite/reglee) est optionnel et rejoint le même lot :  */
+      /* un seul aller-retour, pour qu'aucune lecture concurrente ne voie  */
+      /* jamais le drapeau "reglee" à jour sans les parts qui vont avec.   */
       case "definir-parts": {
         const appartient = await db.prepare(
           "SELECT 1 FROM articles WHERE id = ? AND session_id = ?"
         ).bind(corps.articleId, session.id).first();
         if (!appartient) return erreur("Article introuvable", 404);
 
-        const lot = [
-          db.prepare("DELETE FROM parts WHERE article_id = ?").bind(corps.articleId),
-          ...(corps.parts || []).map((p) =>
-            db.prepare(
-              `INSERT INTO parts (article_id, participant_id, numerateur, denominateur)
-               VALUES (?, ?, ?, ?)`
-            ).bind(corps.articleId, p.participantId, p.numerateur ?? 1, p.denominateur ?? 1)
-          ),
-        ];
+        const lot = [];
+        const c = corps.champs || {};
+        const colonnes = { quantite: "quantite", reglee: "reglee" };
+        const sets = [], valeurs = [];
+        for (const [cle, colonne] of Object.entries(colonnes)) {
+          if (c[cle] !== undefined) {
+            sets.push(`${colonne} = ?`);
+            valeurs.push(cle === "reglee" ? (c[cle] ? 1 : 0) : c[cle]);
+          }
+        }
+        if (sets.length > 0) {
+          lot.push(db.prepare(
+            `UPDATE articles SET ${sets.join(", ")} WHERE id = ? AND session_id = ?`
+          ).bind(...valeurs, corps.articleId, session.id));
+        }
+        lot.push(db.prepare("DELETE FROM parts WHERE article_id = ?").bind(corps.articleId));
+        lot.push(...(corps.parts || []).map((p) =>
+          db.prepare(
+            `INSERT INTO parts (article_id, participant_id, numerateur, denominateur)
+             VALUES (?, ?, ?, ?)`
+          ).bind(corps.articleId, p.participantId, p.numerateur ?? 1, p.denominateur ?? 1)
+        ));
         await db.batch(lot);
         await toucher(db, session.id);
         return json({ ok: true });

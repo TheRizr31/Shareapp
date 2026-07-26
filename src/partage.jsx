@@ -599,10 +599,16 @@ function entierSuivant([n, d], sens) {
   return [Math.max(1, Math.min(MAX_ENTIER, cible)), 1];
 }
 
-/** Avatar + nombre d'exemplaires, réglable par − et +. Appui long = saut à l'entier. */
-function PastilleParts({ participant, actif, fraction, onBasculer, onFraction, onDetail, taille = 36 }) {
+/**
+ * Avatar + fraction réglable par − et +. Appui long = saut à l'entier.
+ * En dessous, le montant en euros équivalent, éditable : le taper met à
+ * jour la fraction (montant ÷ total de l'article, réduit exactement) —
+ * les deux champs sont deux vues du même nombre, jamais désynchronisées.
+ */
+function PastilleParts({ participant, actif, fraction, totalLigne, onBasculer, onFraction, onMontant, taille = 36 }) {
   const initiales = participant.nom.trim().slice(0, 2).toUpperCase() || "?";
   const pleine = fraction[0] === fraction[1];
+  const montantCentimes = totalLigne > 0 ? Math.round((totalLigne * fraction[0]) / fraction[1]) : 0;
   const minuterie = useRef(null);
   const aSaute = useRef(false);
 
@@ -659,20 +665,33 @@ function PastilleParts({ participant, actif, fraction, onBasculer, onFraction, o
       </button>
 
       {actif ? (
-        <span className={`flex items-center gap-px rounded-full transition-colors ${
-                pleine ? "bg-[#ECEEE4]" : "bg-[#1B231C]"}`}>
-          {commande(-1, "−", `Moins pour ${participant.nom}`)}
-          <button
-            onClick={onDetail}
-            aria-label={`Saisir un montant exact pour ${participant.nom} : ${texteFraction(fraction)}`}
-            className={`min-w-[20px] text-center text-[12px] font-bold leading-none transition-colors ${
-              pleine ? "text-[#7C8172] hover:text-[#1B231C]" : "text-[#EEF0E7]/90 hover:text-[#EEF0E7]"}`}
-            style={{ fontFamily: "'Roboto Mono', monospace" }}
-          >
-            {nomFraction(fraction)}
-          </button>
-          {commande(1, "+", `Plus pour ${participant.nom}`)}
-        </span>
+        <>
+          <span className={`flex items-center gap-px rounded-full transition-colors ${
+                  pleine ? "bg-[#ECEEE4]" : "bg-[#1B231C]"}`}>
+            {commande(-1, "−", `Moins pour ${participant.nom}`)}
+            <span
+              aria-label={`Part de ${participant.nom} : ${texteFraction(fraction)}`}
+              className={`min-w-[20px] text-center text-[12px] font-bold leading-none ${
+                pleine ? "text-[#7C8172]" : "text-[#EEF0E7]"}`}
+              style={{ fontFamily: "'Roboto Mono', monospace" }}
+            >
+              {nomFraction(fraction)}
+            </span>
+            {commande(1, "+", `Plus pour ${participant.nom}`)}
+          </span>
+          {totalLigne > 0 && (
+            <span className="flex items-center gap-0.5">
+              <ChampMontant centimes={montantCentimes}
+                onChange={(c) => onMontant(reduire([Math.max(0, c), totalLigne]))}
+                aria-label={`Montant de ${participant.nom}`}
+                className="w-[42px] rounded-md bg-transparent px-0.5 text-center text-[11px]
+                           font-semibold tabular-nums text-[#7C8172] hover:bg-white focus:bg-white
+                           focus:outline-none transition-colors"
+                style={{ fontFamily: "'Roboto Mono', monospace" }} />
+              <span className="text-[10px] font-medium text-[#A7AF98]">€</span>
+            </span>
+          )}
+        </>
       ) : (
         <span className="h-[26px]" aria-hidden="true" />
       )}
@@ -749,7 +768,6 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
   const [partageEtat, setPartageEtat] = useState("pret");
   const [confirmation, setConfirmation] = useState(null);
   const [resteLigne, setResteLigne] = useState(null); // { ligneId, designes[] }
-  const [montantManuel, setMontantManuel] = useState(null); // { ligneId, pid, centimes }
   const [tri, setTri] = useState("saisie");           // saisie | montant | nom
   const [inviteFin, setInviteFin] = useState(null);   // mode invité : "cloturee" | "supprimee"
   const [sauvegarde, setSauvegarde] = useState("repos"); // repos | cours | ok | erreur
@@ -808,10 +826,17 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
 
   const majEtat = useCallback((f) => setEtat((e) => ({ ...e, ...f(e) })), []);
 
-  const synchroniserParts = (ligneCourante) => {
+  /**
+   * `champs` (quantite/reglee) part dans le même appel que les parts :
+   * un seul aller-retour serveur, pour qu'un rafraîchissement périodique
+   * concurrent ne puisse jamais lire un drapeau à jour avec des parts
+   * encore anciennes (c'est ce qui faisait « rebasculer » Tous/Personne).
+   */
+  const synchroniserParts = (ligneCourante, champs) => {
     if (!jeton) return;
     executer(() => appeler("definir-parts", {
       jeton, articleId: ligneCourante.id, parts: partsAPousser(ligneCourante),
+      ...(champs ? { champs } : {}),
     })).catch(() => {});
   };
 
@@ -970,8 +995,7 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
     const suivante = { ...suite, parts: partsEquilibrees(suite, suite.participantIds), reglee: false };
     majEtat((e) => ({ lignes: e.lignes.map((x) => (x.id === id ? suivante : x)) }));
     if (!jeton) return;
-    executer(() => appeler("maj-article", { jeton, id, champs: { quantite: suivante.quantite, reglee: false } })).catch(() => {});
-    synchroniserParts(suivante);
+    synchroniserParts(suivante, { quantite: suivante.quantite, reglee: false });
   };
 
   const dupliquerLigne = async (id) => {
@@ -1010,8 +1034,7 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
     const suivante = { ...l, participantIds: ids, parts: partsEquilibrees(l, ids), reglee: false };
     majEtat((e) => ({ lignes: e.lignes.map((x) => (x.id === ligneId ? suivante : x)) }));
     if (!jeton) return;
-    executer(() => appeler("maj-article", { jeton, id: ligneId, champs: { reglee: false } })).catch(() => {});
-    synchroniserParts(suivante);
+    synchroniserParts(suivante, { reglee: false });
   };
 
   const changerFraction = (ligneId, pid, fraction) => {
@@ -1022,8 +1045,25 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
     const suivante = { ...l, parts, reglee: true };
     majEtat((e) => ({ lignes: e.lignes.map((x) => (x.id === ligneId ? suivante : x)) }));
     if (!jeton) return;
-    executer(() => appeler("maj-article", { jeton, id: ligneId, champs: { reglee: true } })).catch(() => {});
-    synchroniserParts(suivante);
+    synchroniserParts(suivante, { reglee: true });
+  };
+
+  /**
+   * Même chose que changerFraction, mais depuis le montant tapé au clavier :
+   * l'écriture serveur est différée (silence de frappe) pour ne pas
+   * enchaîner une requête à chaque caractère tapé.
+   */
+  const changerFractionDepuisMontant = (ligneId, pid, fraction) => {
+    const l = lignes.find((x) => x.id === ligneId);
+    if (!l) return;
+    const parts = { ...(l.parts || {}) };
+    parts[pid] = fraction;
+    const suivante = { ...l, parts, reglee: true };
+    majEtat((e) => ({ lignes: e.lignes.map((x) => (x.id === ligneId ? suivante : x)) }));
+    if (!jeton) return;
+    differe(`article:${ligneId}:montant:${pid}`, () => appeler("definir-parts", {
+      jeton, articleId: ligneId, parts: partsAPousser(suivante), champs: { reglee: true },
+    }));
   };
 
   const validerReste = () => {
@@ -1034,8 +1074,7 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
     majEtat((e) => ({ lignes: e.lignes.map((x) => (x.id === resteLigne.ligneId ? suivante : x)) }));
     setResteLigne(null);
     if (!jeton) return;
-    executer(() => appeler("maj-article", { jeton, id: resteLigne.ligneId, champs: { reglee: true } })).catch(() => {});
-    synchroniserParts(suivante);
+    synchroniserParts(suivante, { reglee: true });
   };
 
   /** Remet la ligne en partage égal. */
@@ -1045,8 +1084,7 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
     const suivante = { ...l, parts: partsEquilibrees(l, l.participantIds), reglee: false };
     majEtat((e) => ({ lignes: e.lignes.map((x) => (x.id === ligneId ? suivante : x)) }));
     if (!jeton) return;
-    executer(() => appeler("maj-article", { jeton, id: ligneId, champs: { reglee: false } })).catch(() => {});
-    synchroniserParts(suivante);
+    synchroniserParts(suivante, { reglee: false });
   };
 
   const tousOuAucun = (ligneId, tous) => {
@@ -1056,8 +1094,7 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
     const suivante = { ...l, participantIds: ids, parts: partsEquilibrees(l, ids), reglee: false };
     majEtat((e) => ({ lignes: e.lignes.map((x) => (x.id === ligneId ? suivante : x)) }));
     if (!jeton) return;
-    executer(() => appeler("maj-article", { jeton, id: ligneId, champs: { reglee: false } })).catch(() => {});
-    synchroniserParts(suivante);
+    synchroniserParts(suivante, { reglee: false });
   };
 
   /* --- historique --- */
@@ -1647,15 +1684,10 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
                             <PastilleParts key={p.id} participant={p} taille={34}
                               actif={l.participantIds.includes(p.id)}
                               fraction={fractionDe(l, p.id)}
+                              totalLigne={totalLigne(l)}
                               onBasculer={() => basculer(l.id, p.id)}
                               onFraction={(f) => changerFraction(l.id, p.id, f)}
-                              onDetail={() => {
-                                const [n, d] = fractionDe(l, p.id);
-                                setMontantManuel({
-                                  ligneId: l.id, pid: p.id,
-                                  centimes: Math.round((totalLigne(l) * n) / d),
-                                });
-                              }} />
+                              onMontant={(f) => changerFractionDepuisMontant(l.id, p.id, f)} />
                           ))}
                           <button onClick={() => tousOuAucun(l.id, l.participantIds.length !== participants.length)}
                             className="ml-auto shrink-0 rounded-full px-2 py-1 text-[10px] font-bold uppercase
@@ -2096,69 +2128,6 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
                   className="flex-1 rounded-[12px] bg-[#1B231C] py-3 text-[13.5px] font-semibold text-[#EEF0E7]
                              disabled:bg-[#D7DCCB] disabled:text-[#A7AF98] transition-colors">
                   Attribuer
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* montant manuel d'une part */}
-      {montantManuel && (() => {
-        const ligne = lignes.find((l) => l.id === montantManuel.ligneId);
-        const p = participants.find((x) => x.id === montantManuel.pid);
-        if (!ligne || !p) return null;
-        const totalL = totalLigne(ligne);
-        const valide = montantManuel.centimes > 0;
-        const fraction = valide ? reduire([montantManuel.centimes, totalL]) : null;
-
-        const confirmer = () => {
-          if (!valide) return;
-          changerFraction(ligne.id, p.id, fraction);
-          setMontantManuel(null);
-        };
-
-        return (
-          <div className="fixed inset-0 z-50 flex items-end justify-center px-5 pb-6 sm:items-center"
-               style={{ background: "rgba(28,26,23,.55)", backdropFilter: "blur(3px)",
-                        WebkitBackdropFilter: "blur(3px)" }}
-               onClick={() => setMontantManuel(null)}>
-            <div className="monte relative w-full max-w-[400px] rounded-[20px] p-5"
-                 style={{ background: "#EEF0E7", border: "1px solid #DCE1D1",
-                          boxShadow: "0 20px 50px rgba(28,26,23,.35)" }}
-                 onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-              <h2 className="text-[18px] font-bold tracking-[-0.02em]">Montant de {p.nom}</h2>
-              <p className="mt-1.5 text-[12.5px] leading-relaxed text-[#7C8172]">
-                Sur {ligne.libelle}, {fmt(totalL)} € au total. Indique ce que {p.nom} en prend
-                exactement — la fraction se calcule toute seule.
-              </p>
-
-              <div className="mt-4 flex items-baseline justify-center gap-1.5 rounded-[14px] bg-white
-                              px-4 py-3.5 shadow-[0_0_0_1px_#DCE1D1]">
-                <ChampMontant centimes={montantManuel.centimes}
-                  onChange={(c) => setMontantManuel((m) => ({ ...m, centimes: c }))}
-                  aria-label={`Montant de ${p.nom}`}
-                  className="w-[110px] bg-transparent text-right text-[26px] font-bold tabular-nums
-                             focus:outline-none"
-                  style={{ fontFamily: "'Roboto Mono', monospace" }} />
-                <span className="text-[16px] font-medium text-[#7C8172]">€</span>
-              </div>
-
-              <p className="mt-3 text-center text-[12px] tabular-nums text-[#7C8172]"
-                 style={{ fontFamily: "'Roboto Mono', monospace" }}>
-                {valide ? `= ${nomFraction(fraction)} de l'article` : "Montant à saisir"}
-              </p>
-
-              <div className="mt-4 flex gap-2">
-                <button onClick={() => setMontantManuel(null)}
-                  className="flex-1 rounded-[12px] border border-[#DCE1D2] py-3 text-[13.5px] font-semibold
-                             hover:bg-white transition-colors">
-                  Annuler
-                </button>
-                <button onClick={confirmer} disabled={!valide}
-                  className="flex-1 rounded-[12px] bg-[#1B231C] py-3 text-[13.5px] font-semibold text-[#EEF0E7]
-                             disabled:bg-[#D7DCCB] disabled:text-[#A7AF98] transition-colors">
-                  Valider
                 </button>
               </div>
             </div>
