@@ -86,6 +86,22 @@ export function retirerIndex(cle, jeton) {
   return suite;
 }
 
+/**
+ * Marque cet appareil comme celui qui a créé une session donnée — le seul
+ * moyen fiable de reconnaître le créateur sans compte : à la différence de
+ * l'historique local, ce repère n'est jamais posé pour un destinataire qui
+ * ouvre juste un lien reçu. Sert à rendre la navigation complète (retour à
+ * l'accueil) à un créateur qui rouvre son propre lien /s/<jeton>, tout en
+ * gardant le mode invité pour tout le monde d'autre.
+ */
+export function marquerCreateur(jeton) {
+  try { localStorage.setItem(`partage:createur:${jeton}`, "1"); } catch { /* tant pis */ }
+}
+
+export function estCreateur(jeton) {
+  try { return localStorage.getItem(`partage:createur:${jeton}`) === "1"; } catch { return false; }
+}
+
 /* ---------- partage du lien de session ---------- */
 
 /**

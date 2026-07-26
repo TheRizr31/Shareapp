@@ -7,7 +7,7 @@ import {
 import {
   appeler, creerFile, lireJSON, ecrireJSON, majIndex, retirerIndex,
   jetonDeLURL, allerVersSession, allerVersAccueil, partagerLien,
-  useActualisationPeriodique,
+  useActualisationPeriodique, marquerCreateur, estCreateur,
 } from "./api.js";
 
 /* ==================================================================== */
@@ -799,6 +799,7 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
   /* --- crée la session dès qu'on entre en saisie sans en avoir une --- */
   const creerSession = async () => {
     const { jeton: nouveau } = await appeler("creer", { type: "addition" });
+    marquerCreateur(nouveau);
     setJeton(nouveau);
     allerVersSession(nouveau);
     setHistorique(majIndex(CLE_HISTO, nouveau, {
@@ -2472,6 +2473,7 @@ function ModuleLocation({ onRetour, sessionInitiale, modeInvite }) {
   /* --- crée la location dès qu'on en a besoin sans en avoir une --- */
   const creerSession = async () => {
     const { jeton: nouveau } = await appeler("creer", { type: "location" });
+    marquerCreateur(nouveau);
     setJeton(nouveau);
     allerVersSession(nouveau);
     setHistorique(majIndex(CLE_LOC_HISTO, nouveau, {
@@ -3573,6 +3575,7 @@ function ModuleCagnotte({ onRetour, sessionInitiale, modeInvite }) {
 
   const creerSession = async () => {
     const r = await appeler("creer", { type: "cagnotte" });
+    marquerCreateur(r.jeton);
     setJeton(r.jeton);
     setEtat({ ...cagnotteEtatVierge(), jetonContributeurs: r.jetonContributeurs, estOrganisateur: true });
     allerVersSession(r.jeton);
@@ -4167,15 +4170,18 @@ export default function Partage() {
   const [pret, setPret] = useState(false);
   const [introuvable, setIntrouvable] = useState(false);
   // Arrivée par lien brut (/s/<jeton>) : on ne partage que CETTE session, pas
-  // l'appli entière — aucun moyen de distinguer le créateur d'un destinataire
-  // sans compte, donc la règle s'applique à tout le monde de la même façon.
+  // l'appli entière. Pas de compte pour distinguer créateur et destinataire,
+  // mais `marquerCreateur` pose un repère local au moment de la création :
+  // s'il est là, cet appareil est celui qui a créé la session (même après
+  // un rechargement ou une réouverture du lien) et garde la navigation
+  // complète ; sinon, on considère qu'on ne partage que cette session.
   const [modeInvite, setModeInvite] = useState(false);
 
   useEffect(() => {
     (async () => {
       const jeton = jetonDeLURL();
       if (jeton) {
-        setModeInvite(true);
+        setModeInvite(!estCreateur(jeton));
         try {
           const s = await appeler("lire", { jeton });
           setSession(s);
