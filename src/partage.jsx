@@ -48,6 +48,30 @@ const fmt = (c) =>
 const dateCourte = (iso) =>
   new Date(iso).toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
 
+/* ---------- suggestions de noms déjà venus ---------- */
+
+/** Ancien format (tableau de chaînes) → {nom, count}, pour les listes déjà en localStorage. */
+function normaliserNoms(ns) {
+  return ns.map((n) => (typeof n === "string" ? { nom: n, count: 1 } : n));
+}
+
+/** Enregistre un nom utilisé : incrémente son compteur ou l'ajoute. */
+function noterNomUtilise(ns, nom) {
+  const i = ns.findIndex((x) => x.nom.toLowerCase() === nom.toLowerCase());
+  if (i === -1) return [...ns, { nom, count: 1 }];
+  const copie = [...ns];
+  copie[i] = { ...copie[i], count: copie[i].count + 1 };
+  return copie;
+}
+
+/** Suggestions à proposer : les plus utilisés d'abord, jamais déjà présents, plafonné. */
+function classerSuggestions(ns, presents, max = 6) {
+  return ns
+    .filter((x) => !presents.some((nom) => nom.toLowerCase() === x.nom.toLowerCase()))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, max);
+}
+
 function repartir(centimes, n) {
   if (n <= 0) return [];
   const base = Math.floor(centimes / n);
@@ -576,7 +600,7 @@ function entierSuivant([n, d], sens) {
 }
 
 /** Avatar + nombre d'exemplaires, réglable par − et +. Appui long = saut à l'entier. */
-function PastilleParts({ participant, actif, fraction, onBasculer, onFraction, taille = 36 }) {
+function PastilleParts({ participant, actif, fraction, onBasculer, onFraction, onDetail, taille = 36 }) {
   const initiales = participant.nom.trim().slice(0, 2).toUpperCase() || "?";
   const pleine = fraction[0] === fraction[1];
   const minuterie = useRef(null);
@@ -638,14 +662,15 @@ function PastilleParts({ participant, actif, fraction, onBasculer, onFraction, t
         <span className={`flex items-center gap-px rounded-full transition-colors ${
                 pleine ? "bg-[#ECEEE4]" : "bg-[#1B231C]"}`}>
           {commande(-1, "−", `Moins pour ${participant.nom}`)}
-          <span
-            aria-label={`Part de ${participant.nom} : ${texteFraction(fraction)}`}
-            className={`min-w-[20px] text-center text-[12px] font-bold leading-none ${
-              pleine ? "text-[#7C8172]" : "text-[#EEF0E7]"}`}
+          <button
+            onClick={onDetail}
+            aria-label={`Saisir un montant exact pour ${participant.nom} : ${texteFraction(fraction)}`}
+            className={`min-w-[20px] text-center text-[12px] font-bold leading-none transition-colors ${
+              pleine ? "text-[#7C8172] hover:text-[#1B231C]" : "text-[#EEF0E7]/90 hover:text-[#EEF0E7]"}`}
             style={{ fontFamily: "'Roboto Mono', monospace" }}
           >
             {nomFraction(fraction)}
-          </span>
+          </button>
           {commande(1, "+", `Plus pour ${participant.nom}`)}
         </span>
       ) : (
@@ -724,6 +749,7 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
   const [partageEtat, setPartageEtat] = useState("pret");
   const [confirmation, setConfirmation] = useState(null);
   const [resteLigne, setResteLigne] = useState(null); // { ligneId, designes[] }
+  const [montantManuel, setMontantManuel] = useState(null); // { ligneId, pid, centimes }
   const [tri, setTri] = useState("saisie");           // saisie | montant | nom
   const [inviteFin, setInviteFin] = useState(null);   // mode invité : "cloturee" | "supprimee"
   const [sauvegarde, setSauvegarde] = useState("repos"); // repos | cours | ok | erreur
@@ -741,7 +767,7 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
   /* --- soit l'écran d'accueil du module (liste des additions connues). --- */
   useEffect(() => {
     if (sessionInitiale) return; // déjà chargé synchroniquement à l'init de l'état
-    setNomsConnus(lireJSON(CLE_NOMS, []));
+    setNomsConnus(normaliserNoms(lireJSON(CLE_NOMS, [])));
     const h = lireJSON(CLE_HISTO, []);
     setHistorique(h);
     if (h.length === 0) {
@@ -888,9 +914,14 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
     try {
       const { id } = await executer(() => appeler("ajouter-participant", { jeton, nom: n, couleur }));
       majEtat((e) => ({ participants: [...e.participants, { id, nom: n, couleur }] }));
-      setNomsConnus((ns) => [n, ...ns.filter((x) => x.toLowerCase() !== n.toLowerCase())].slice(0, 12));
+      setNomsConnus((ns) => noterNomUtilise(ns, n));
       return id;
     } catch (e) { console.error(e); }
+  };
+
+  /** Oublie définitivement une suggestion de nom (ne supprime personne de l'addition). */
+  const retirerSuggestion = (nom) => {
+    setNomsConnus((ns) => ns.filter((x) => x.nom.toLowerCase() !== nom.toLowerCase()));
   };
 
   const retirerParticipant = (id) => {
@@ -1151,9 +1182,7 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
     }
   };
 
-  const suggestions = nomsConnus.filter(
-    (n) => !participants.some((p) => p.nom.toLowerCase() === n.toLowerCase())
-  );
+  const suggestions = classerSuggestions(nomsConnus, participants.map((p) => p.nom));
 
   const styles = `
     @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Roboto+Mono:wght@400;500;700&display=swap');
@@ -1396,12 +1425,20 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
                     Déjà venus
                   </span>
                   <div className="flex flex-wrap gap-1.5">
-                    {suggestions.map((n) => (
-                      <button key={n} onClick={() => ajouterNom(n)}
-                        className="rounded-full border border-[#D7DCCB] px-3 py-1 text-[12.5px] text-[#7C8172]
-                                   hover:border-[#1B231C] hover:text-[#1B231C] transition-colors">
-                        + {n}
-                      </button>
+                    {suggestions.map((s) => (
+                      <span key={s.nom}
+                        className="flex items-center gap-1 rounded-full border border-[#D7DCCB] py-1 pl-3 pr-1">
+                        <button onClick={() => ajouterNom(s.nom)}
+                          className="text-[12.5px] text-[#7C8172] hover:text-[#1B231C] transition-colors">
+                          + {s.nom}
+                        </button>
+                        <button onClick={() => retirerSuggestion(s.nom)}
+                          aria-label={`Oublier ${s.nom}`}
+                          className="flex h-5 w-5 items-center justify-center rounded-full text-[#C2C9B4]
+                                     hover:text-[#C1362F] transition-colors">
+                          <X size={11} strokeWidth={2.5} />
+                        </button>
+                      </span>
                     ))}
                   </div>
                 </div>
@@ -1611,7 +1648,14 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
                               actif={l.participantIds.includes(p.id)}
                               fraction={fractionDe(l, p.id)}
                               onBasculer={() => basculer(l.id, p.id)}
-                              onFraction={(f) => changerFraction(l.id, p.id, f)} />
+                              onFraction={(f) => changerFraction(l.id, p.id, f)}
+                              onDetail={() => {
+                                const [n, d] = fractionDe(l, p.id);
+                                setMontantManuel({
+                                  ligneId: l.id, pid: p.id,
+                                  centimes: Math.round((totalLigne(l) * n) / d),
+                                });
+                              }} />
                           ))}
                           <button onClick={() => tousOuAucun(l.id, l.participantIds.length !== participants.length)}
                             className="ml-auto shrink-0 rounded-full px-2 py-1 text-[10px] font-bold uppercase
@@ -2059,6 +2103,69 @@ function ModuleAddition({ onRetour, sessionInitiale, modeInvite }) {
         );
       })()}
 
+      {/* montant manuel d'une part */}
+      {montantManuel && (() => {
+        const ligne = lignes.find((l) => l.id === montantManuel.ligneId);
+        const p = participants.find((x) => x.id === montantManuel.pid);
+        if (!ligne || !p) return null;
+        const totalL = totalLigne(ligne);
+        const valide = montantManuel.centimes > 0;
+        const fraction = valide ? reduire([montantManuel.centimes, totalL]) : null;
+
+        const confirmer = () => {
+          if (!valide) return;
+          changerFraction(ligne.id, p.id, fraction);
+          setMontantManuel(null);
+        };
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-end justify-center px-5 pb-6 sm:items-center"
+               style={{ background: "rgba(28,26,23,.55)", backdropFilter: "blur(3px)",
+                        WebkitBackdropFilter: "blur(3px)" }}
+               onClick={() => setMontantManuel(null)}>
+            <div className="monte relative w-full max-w-[400px] rounded-[20px] p-5"
+                 style={{ background: "#EEF0E7", border: "1px solid #DCE1D1",
+                          boxShadow: "0 20px 50px rgba(28,26,23,.35)" }}
+                 onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+              <h2 className="text-[18px] font-bold tracking-[-0.02em]">Montant de {p.nom}</h2>
+              <p className="mt-1.5 text-[12.5px] leading-relaxed text-[#7C8172]">
+                Sur {ligne.libelle}, {fmt(totalL)} € au total. Indique ce que {p.nom} en prend
+                exactement — la fraction se calcule toute seule.
+              </p>
+
+              <div className="mt-4 flex items-baseline justify-center gap-1.5 rounded-[14px] bg-white
+                              px-4 py-3.5 shadow-[0_0_0_1px_#DCE1D1]">
+                <ChampMontant centimes={montantManuel.centimes}
+                  onChange={(c) => setMontantManuel((m) => ({ ...m, centimes: c }))}
+                  aria-label={`Montant de ${p.nom}`}
+                  className="w-[110px] bg-transparent text-right text-[26px] font-bold tabular-nums
+                             focus:outline-none"
+                  style={{ fontFamily: "'Roboto Mono', monospace" }} />
+                <span className="text-[16px] font-medium text-[#7C8172]">€</span>
+              </div>
+
+              <p className="mt-3 text-center text-[12px] tabular-nums text-[#7C8172]"
+                 style={{ fontFamily: "'Roboto Mono', monospace" }}>
+                {valide ? `= ${nomFraction(fraction)} de l'article` : "Montant à saisir"}
+              </p>
+
+              <div className="mt-4 flex gap-2">
+                <button onClick={() => setMontantManuel(null)}
+                  className="flex-1 rounded-[12px] border border-[#DCE1D2] py-3 text-[13.5px] font-semibold
+                             hover:bg-white transition-colors">
+                  Annuler
+                </button>
+                <button onClick={confirmer} disabled={!valide}
+                  className="flex-1 rounded-[12px] bg-[#1B231C] py-3 text-[13.5px] font-semibold text-[#EEF0E7]
+                             disabled:bg-[#D7DCCB] disabled:text-[#A7AF98] transition-colors">
+                  Valider
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* modale de confirmation */}
       {confirmation === "abandon" && (
         <div className="fixed inset-0 z-50 flex items-end justify-center px-5 pb-6 sm:items-center"
@@ -2361,7 +2468,7 @@ function ModuleLocation({ onRetour, sessionInitiale, modeInvite }) {
   /* --- soit l'écran d'accueil du module (liste des locations connues). --- */
   useEffect(() => {
     if (sessionInitiale) return; // déjà chargé synchroniquement à l'init de l'état
-    setNomsConnus(lireJSON(CLE_LOC_NOMS, []));
+    setNomsConnus(normaliserNoms(lireJSON(CLE_LOC_NOMS, [])));
     const h = lireJSON(CLE_LOC_HISTO, []);
     setHistorique(h);
     if (h.length === 0) {
@@ -2518,9 +2625,14 @@ function ModuleLocation({ onRetour, sessionInitiale, modeInvite }) {
     try {
       const { id } = await executer(() => appeler("ajouter-participant", { jeton, nom: n, couleur }));
       majEtat((e) => ({ personnes: [...e.personnes, { id, nom: n, couleur, debut: null, fin: null }] }));
-      setNomsConnus((ns) => [n, ...ns.filter((x) => x.toLowerCase() !== n.toLowerCase())].slice(0, 12));
+      setNomsConnus((ns) => noterNomUtilise(ns, n));
       return id;
     } catch (e) { console.error(e); }
+  };
+
+  /** Oublie définitivement une suggestion de nom (ne supprime personne de la location). */
+  const retirerSuggestion = (nom) => {
+    setNomsConnus((ns) => ns.filter((x) => x.nom.toLowerCase() !== nom.toLowerCase()));
   };
 
   const retirerPersonne = (id) => {
@@ -2587,9 +2699,7 @@ function ModuleLocation({ onRetour, sessionInitiale, modeInvite }) {
     } catch (e) { console.error(e); }
   };
 
-  const suggestions = nomsConnus.filter(
-    (n) => !personnes.some((p) => p.nom.toLowerCase() === n.toLowerCase())
-  );
+  const suggestions = classerSuggestions(nomsConnus, personnes.map((p) => p.nom));
 
   const styles = `
     @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Roboto+Mono:wght@400;500;700&display=swap');
@@ -2934,12 +3044,21 @@ function ModuleLocation({ onRetour, sessionInitiale, modeInvite }) {
                     Déjà venus
                   </span>
                   <div className="flex flex-wrap gap-1.5">
-                    {suggestions.map((n) => (
-                      <button key={n} onClick={() => ajouterPersonne(n)}
-                        className="rounded-full px-3 py-1 text-[12.5px] transition-colors"
-                        style={{ border: "1px solid #D7DCCB", color: "#7C8172" }}>
-                        + {n}
-                      </button>
+                    {suggestions.map((s) => (
+                      <span key={s.nom}
+                        className="flex items-center gap-1 rounded-full py-1 pl-3 pr-1"
+                        style={{ border: "1px solid #D7DCCB" }}>
+                        <button onClick={() => ajouterPersonne(s.nom)}
+                          className="text-[12.5px] transition-colors" style={{ color: "#7C8172" }}>
+                          + {s.nom}
+                        </button>
+                        <button onClick={() => retirerSuggestion(s.nom)}
+                          aria-label={`Oublier ${s.nom}`}
+                          className="flex h-5 w-5 items-center justify-center rounded-full transition-colors"
+                          style={{ color: "#C2C9B4" }}>
+                          <X size={11} strokeWidth={2.5} />
+                        </button>
+                      </span>
                     ))}
                   </div>
                 </div>
